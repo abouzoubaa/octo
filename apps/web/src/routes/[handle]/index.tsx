@@ -1,5 +1,6 @@
 import { component$ } from "@builder.io/qwik";
 import { routeLoader$, Form, type DocumentHead } from "@builder.io/qwik-city";
+import { ThemeToggle } from "~/components/theme-toggle";
 import { API_BASE, searchArchive, type SearchResponse } from "~/lib/api";
 
 // The search-first landing page (plan §3): the link opens directly on the
@@ -15,18 +16,39 @@ export const useSearch = routeLoader$<{ handle: string; data: SearchResponse | n
   }
 );
 
+function fmtDate(iso: string | null): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
+function fmtTs(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 export default component$(() => {
   const search = useSearch();
   const { handle, data, q } = search.value;
 
   return (
     <>
-      <div class="header">
-        <h1>@{handle}'s archive</h1>
-        <p>Ask in normal words — I'll find the post.</p>
-      </div>
+      <header class="topbar">
+        <div class="identity">
+          <div class="avatar">{handle.charAt(0).toUpperCase()}</div>
+          <div>
+            <h1>@{handle}'s archive</h1>
+            <p>Ask in normal words — I'll find the post.</p>
+          </div>
+        </div>
+        <ThemeToggle />
+      </header>
 
-      <Form class="search-form">
+      <Form class="search-form glass">
         <input
           type="search"
           name="q"
@@ -39,37 +61,47 @@ export default component$(() => {
       </Form>
 
       {data?.answer && data.answer.state === "answered" && (
-        <div class="answer-card">
-          <div class="label">From @{handle}'s content</div>
-          <p>{data.answer.text}</p>
-          {data.answer.citations.map((c) => (
-            <div class="citation" key={c.n}>
-              [{c.n}]{" "}
-              {c.permalink ? (
-                <a href={c.permalink} target="_blank" rel="noopener">
-                  original post ↗
-                </a>
-              ) : (
-                "source"
-              )}{" "}
-              — “{c.quote.slice(0, 120)}…”
-            </div>
-          ))}
-        </div>
+        <section class="answer-card glass">
+          <div class="label">
+            <span class="dot" />
+            From @{handle}'s content
+          </div>
+          <p class="answer-text">{data.answer.text}</p>
+          <div class="citations">
+            {data.answer.citations.map((c) => (
+              <a
+                class="citation"
+                key={c.n}
+                href={c.permalink ?? "#"}
+                target="_blank"
+                rel="noopener"
+              >
+                <span class="n">[{c.n}]</span>
+                <span class="quote">{c.quote}</span>
+              </a>
+            ))}
+          </div>
+        </section>
       )}
 
       {data?.answer && data.answer.state === "no_strong_answer" && (
-        <div class="answer-card">
+        <section class="answer-card glass">
+          <div class="label">
+            <span class="dot" />
+            No strong answer yet
+          </div>
           <p class="no-answer">
-            No strong answer for that in the archive yet — try different words, or browse the
-            results below.
+            Nothing in the archive answers that directly — try different words, or browse the
+            closest posts below.
           </p>
-        </div>
+        </section>
       )}
+
+      {data && data.results.length > 0 && <p class="results-label">Posts</p>}
 
       {data?.results.map((r) => (
         <a
-          class="result"
+          class="result glass"
           key={r.post_id}
           href={r.permalink ?? "#"}
           target="_blank"
@@ -82,9 +114,20 @@ export default component$(() => {
             }).catch(() => {});
           }}
         >
-          <span class="type">{r.post_type}</span>
-          {r.caption && <p class="caption">{r.caption.slice(0, 140)}</p>}
-          {r.evidence[0] && <p class="evidence">…{r.evidence[0].text.slice(0, 180)}…</p>}
+          <div class="meta">
+            <span class="type">{r.post_type}</span>
+            <span class="date">{fmtDate(r.posted_at)}</span>
+            <span class="open">Open ↗</span>
+          </div>
+          {r.caption && <p class="caption">{r.caption}</p>}
+          {r.evidence[0] && (
+            <p class="evidence">
+              {r.evidence[0].start_ts != null && (
+                <span class="ts">{fmtTs(r.evidence[0].start_ts)} · </span>
+              )}
+              {r.evidence[0].text}
+            </p>
+          )}
           {r.products.length > 0 && (
             <div class="products">
               {r.products.map((p) => (
@@ -97,9 +140,15 @@ export default component$(() => {
         </a>
       ))}
 
-      <div class="footer">
+      {data && data.results.length === 0 && (
+        <div class="empty-state glass">
+          Nothing found for “{q}” — try different words.
+        </div>
+      )}
+
+      <footer class="footer">
         Powered by <a href="/">Creator Content Intelligence</a>
-      </div>
+      </footer>
     </>
   );
 });

@@ -3,7 +3,7 @@ import { component$ } from "@builder.io/qwik";
 // No fancy homepage (plan phase 2): the product front door is /{creator}.
 export default component$(() => {
   return (
-    <div class="header">
+    <div class="home-hero">
       <h1>Creator Content Intelligence</h1>
       <p>
         Each creator has a search-first archive at <code>/&lt;handle&gt;</code> — ask in normal

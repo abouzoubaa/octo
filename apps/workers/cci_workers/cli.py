@@ -44,9 +44,13 @@ def main() -> None:
     p.add_argument("platform", choices=["instagram", "youtube"])
     p.add_argument("token")
 
-    for name in ("backfill", "backfill-youtube", "process", "digest", "seed-demo"):
+    for name in ("backfill", "backfill-youtube", "process", "digest"):
         p = sub.add_parser(name)
         p.add_argument("handle")
+
+    p = sub.add_parser("seed-demo")
+    p.add_argument("handle")
+    p.add_argument("--subject", default="fitness", choices=["fitness", "travel"])
 
     p = sub.add_parser("radar")
     p.add_argument("handle")
@@ -106,7 +110,7 @@ def main() -> None:
     elif args.cmd == "seed-demo":
         from cci_workers.seed import seed_demo
 
-        print(seed_demo(creator_id))
+        print(seed_demo(creator_id, subject=args.subject))
 
 
 if __name__ == "__main__":
