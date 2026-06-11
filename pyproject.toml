@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "creator-content-intelligence"
+version = "0.1.0"
+description = "Creator Content Intelligence — search-first archive, grounded answers, Demand Radar"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",
+    "pgvector>=0.2.5",
+    "httpx>=0.27",
+    "redis>=5.0",
+    "rq>=1.16",
+    "numpy>=1.26",
+    "python-multipart>=0.0.9",
+    "minio>=7.2",
+    "jinja2>=3.1",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+ml = [
+    "faster-whisper>=1.0",
+    "paddleocr>=2.7",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+cci-api = "cci_api.main:run"
+cci-worker = "cci_workers.run:main"
+cci-eval = "cci_eval.harness:main"
+cci-ingest = "cci_workers.cli:main"
+cci-migrate = "cci_core.bootstrap:init_db"
+
+[tool.setuptools]
+py-modules = []
+
+[tool.setuptools.packages.find]
+where = ["packages/core", "packages/providers", "packages/retrieval", "apps/api", "apps/workers", "eval"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
