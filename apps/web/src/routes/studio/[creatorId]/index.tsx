@@ -25,14 +25,15 @@ interface Briefing {
 
 export const useOverview = routeLoader$(async ({ params }) => {
   const cid = params.creatorId;
-  const [creators, radar, briefing, metrics] = await Promise.all([
+  const [creators, radar, briefing, metrics, northStar] = await Promise.all([
     adminGet<{ id: string; handle: string }[]>("/admin/creators"),
     adminGet<DemandCard[]>(`/admin/creators/${cid}/radar`),
     adminGet<Briefing>(`/agent/creators/${cid}/briefing?with_draft=false`),
     adminGet<Record<string, unknown>>(`/admin/creators/${cid}/metrics`),
+    adminGet<import("~/lib/admin-api").NorthStar>(`/agent/creators/${cid}/north-star`),
   ]);
   const creator = (creators ?? []).find((c) => c.id === cid);
-  return { cid, handle: creator?.handle ?? cid, radar: radar ?? [], briefing, metrics };
+  return { cid, handle: creator?.handle ?? cid, radar: radar ?? [], briefing, metrics, northStar };
 });
 
 // Move a demand card through its lifecycle (idea → drafting → published → …)
@@ -47,13 +48,14 @@ export const useDraft = routeAction$(async (data) => {
   return { ok: res !== null, draftId: res?.draft_id };
 });
 
-const NEXT_STATE: Record<string, string | null> = {
-  new: "idea",
-  idea: "drafting",
-  drafting: "published",
-  published: "loop_closed",
+// the next lifecycle step + the action verb a creator actually thinks in
+const NEXT_STATE: Record<string, { to: string; verb: string } | null> = {
+  new: { to: "idea", verb: "✓ Make this" },
+  idea: { to: "drafting", verb: "✍️ Draft it" },
+  drafting: { to: "published", verb: "📤 Mark published" },
+  published: { to: "loop_closed", verb: "🔁 Close the loop" },
   loop_closed: null,
-  dismissed: "idea",
+  dismissed: { to: "idea", verb: "↩ Revisit" },
 };
 
 export default component$(() => {
@@ -86,22 +88,20 @@ export default component$(() => {
         </Link>
       </nav>
 
-      {m?.audience && (
-        <section class="stat-row">
-          <div class="stat glass">
-            <span class="stat-n">{m.audience.searches ?? 0}</span>
-            <span class="stat-l">searches</span>
-          </div>
-          <div class="stat glass">
-            <span class="stat-n">{m.corpus?.question_comments_total ?? 0}</span>
-            <span class="stat-l">questions</span>
-          </div>
-          <div class="stat glass">
-            <span class="stat-n">{m.dm?.sent ?? 0}</span>
-            <span class="stat-l">DMs sent</span>
-          </div>
-        </section>
-      )}
+      <section class="stat-row">
+        <div class="stat glass">
+          <span class="stat-n">{o.value.northStar?.closed_loops_per_week ?? 0}</span>
+          <span class="stat-l">loops closed/wk</span>
+        </div>
+        <div class="stat glass">
+          <span class="stat-n">{o.value.northStar?.in_flight_loops ?? 0}</span>
+          <span class="stat-l">in flight</span>
+        </div>
+        <div class="stat glass">
+          <span class="stat-n">{(m?.audience as any)?.searches ?? 0}</span>
+          <span class="stat-l">searches</span>
+        </div>
+      </section>
 
       {o.value.briefing && (
         <section class="answer-card glass">
@@ -121,17 +121,23 @@ export default component$(() => {
         </section>
       )}
 
-      <p class="results-label">Demand pipeline</p>
+      <p class="results-label">Opportunity queue</p>
       {o.value.radar.length === 0 && (
-        <div class="empty-state glass">No demand cards yet — run Radar to populate.</div>
+        <div class="empty-state glass">No opportunities yet — run Radar to populate.</div>
       )}
       {o.value.radar.map((c) => (
         <div class="result glass" key={c.id}>
           <div class="meta">
+            {c.opportunity_score != null && (
+              <span class="score">{Math.round(c.opportunity_score)}</span>
+            )}
             <span class="type">{c.state}</span>
             <span class="date">
-              {c.search_count + c.comment_count} signal
+              {c.integrity?.unique_askers ?? c.search_count + c.comment_count} asking
               {c.coverage?.gap ? " · gap" : ""}
+              {c.integrity?.manipulation_risk && c.integrity.manipulation_risk > 0.5
+                ? " · ⚠ inflatable"
+                : ""}
             </span>
           </div>
           <p class="caption">{c.label}</p>
@@ -140,9 +146,9 @@ export default component$(() => {
             {NEXT_STATE[c.state] && (
               <Form action={transition}>
                 <input type="hidden" name="topicId" value={c.id} />
-                <input type="hidden" name="to" value={NEXT_STATE[c.state]!} />
+                <input type="hidden" name="to" value={NEXT_STATE[c.state]!.to} />
                 <button class="pill-btn" type="submit">
-                  → {NEXT_STATE[c.state]}
+                  {NEXT_STATE[c.state]!.verb}
                 </button>
               </Form>
             )}
@@ -157,7 +163,7 @@ export default component$(() => {
                 <input type="hidden" name="topicId" value={c.id} />
                 <input type="hidden" name="to" value="dismissed" />
                 <button class="pill-btn ghost" type="submit">
-                  Dismiss
+                  Ignore — weak
                 </button>
               </Form>
             )}

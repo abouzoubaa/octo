@@ -52,6 +52,18 @@ export interface DemandCard {
   confidence: string | null;
   state: string;
   coverage: { gap?: boolean } | null;
+  opportunity_score: number | null;
+  integrity?: {
+    unique_askers: number;
+    manipulation_risk?: number | null;
+    intent_class: string | null;
+  };
+}
+
+export interface NorthStar {
+  closed_loops: number;
+  closed_loops_per_week: number;
+  in_flight_loops: number;
 }
 
 export interface DmQueueItem {

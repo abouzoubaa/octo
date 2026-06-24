@@ -24,6 +24,18 @@ export interface SearchResult {
   score: number;
   evidence: Evidence[];
   products: ProductRef[];
+  language?: string | null;
+}
+
+export interface StartPath {
+  label: string;
+  query: string;
+}
+
+export async function startHere(handle: string): Promise<{ paths: StartPath[]; hint: string } | null> {
+  const resp = await fetch(`${API_BASE}/api/${encodeURIComponent(handle)}/start-here`);
+  if (!resp.ok) return null;
+  return resp.json();
 }
 
 export interface Citation {

@@ -1,20 +1,28 @@
 import { component$ } from "@builder.io/qwik";
-import { routeLoader$, Form, type DocumentHead } from "@builder.io/qwik-city";
+import { routeLoader$, Form, Link, type DocumentHead } from "@builder.io/qwik-city";
 import { ThemeToggle } from "~/components/theme-toggle";
-import { API_BASE, searchArchive, type SearchResponse } from "~/lib/api";
+import { API_BASE, searchArchive, startHere, type SearchResponse, type StartPath } from "~/lib/api";
 
 // The search-first landing page (plan §3): the link opens directly on the
 // search bar; ?q= runs the search server-side so shared deep links and DM
-// links land with results (and the answer card) already rendered.
-export const useSearch = routeLoader$<{ handle: string; data: SearchResponse | null; q: string }>(
-  async ({ params, query }) => {
-    const q = query.get("q")?.trim() ?? "";
-    const handle = params.handle;
-    if (!q) return { handle, data: null, q };
-    const data = await searchArchive(handle, q);
-    return { handle, data, q };
+// links land with results (and the answer card) already rendered. With no
+// query we show "start here" entry paths so a fan who doesn't know what to
+// type isn't faced with a blank box.
+export const useSearch = routeLoader$<{
+  handle: string;
+  data: SearchResponse | null;
+  q: string;
+  start: StartPath[];
+}>(async ({ params, query }) => {
+  const q = query.get("q")?.trim() ?? "";
+  const handle = params.handle;
+  if (!q) {
+    const sh = await startHere(handle);
+    return { handle, data: null, q, start: sh?.paths ?? [] };
   }
-);
+  const data = await searchArchive(handle, q);
+  return { handle, data, q, start: [] };
+});
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "";
@@ -31,9 +39,33 @@ function fmtTs(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+// Outcome Memory: tell the server whether the answer helped.
+function sendFeedback(handle: string, answerId: string, helpful: boolean): void {
+  fetch(`${API_BASE}/api/${handle}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    keepalive: true,
+    body: JSON.stringify({ answer_id: answerId, helpful }),
+  }).catch(() => {});
+}
+
+// Explicit save for anonymous fans — client-side (localStorage), per creator.
+function saveResult(handle: string, postId: string, caption: string, url: string): void {
+  try {
+    const key = `sift_saved_${handle}`;
+    const saved = JSON.parse(localStorage.getItem(key) ?? "[]");
+    if (!saved.some((s: { post_id: string }) => s.post_id === postId)) {
+      saved.unshift({ post_id: postId, caption: caption.slice(0, 120), url });
+      localStorage.setItem(key, JSON.stringify(saved.slice(0, 50)));
+    }
+  } catch {
+    /* private mode */
+  }
+}
+
 export default component$(() => {
   const search = useSearch();
-  const { handle, data, q } = search.value;
+  const { handle, data, q, start } = search.value;
 
   return (
     <>
@@ -60,6 +92,19 @@ export default component$(() => {
         <button type="submit">Search</button>
       </Form>
 
+      {!q && start.length > 0 && (
+        <section class="start-here">
+          <p class="results-label">Start here</p>
+          <div class="chips">
+            {start.map((p) => (
+              <Link key={p.query} class="chip glass" href={`/${handle}?q=${encodeURIComponent(p.query)}`}>
+                {p.label}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
       {data?.answer && data.answer.state === "answered" && (
         <section class="answer-card glass">
           <div class="label">
@@ -81,6 +126,29 @@ export default component$(() => {
               </a>
             ))}
           </div>
+          {data.answer.answer_id && (
+            <div class="feedback">
+              <span>Did this help?</span>
+              <button
+                class="fb-btn"
+                type="button"
+                onClick$={() =>
+                  sendFeedback(handle, data.answer!.answer_id!, true)
+                }
+              >
+                👍 Yes
+              </button>
+              <button
+                class="fb-btn"
+                type="button"
+                onClick$={() =>
+                  sendFeedback(handle, data.answer!.answer_id!, false)
+                }
+              >
+                👎 No
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -116,7 +184,19 @@ export default component$(() => {
         >
           <div class="meta">
             <span class="type">{r.post_type}</span>
+            {r.language && r.language !== "en" && <span class="lang">{r.language}</span>}
             <span class="date">{fmtDate(r.posted_at)}</span>
+            <button
+              class="save-btn"
+              type="button"
+              preventdefault:click
+              onClick$={(e) => {
+                e.stopPropagation();
+                saveResult(handle, r.post_id, r.caption ?? "", r.permalink ?? "");
+              }}
+            >
+              ☆ Save
+            </button>
             <span class="open">Open ↗</span>
           </div>
           {r.caption && <p class="caption">{r.caption}</p>}
