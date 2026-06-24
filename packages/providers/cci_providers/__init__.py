@@ -16,6 +16,7 @@ from cci_providers.registry import (
     get_ocr,
     get_reranker,
     get_transcriber,
+    provider_versions,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "get_transcriber",
     "get_ocr",
     "get_reranker",
+    "provider_versions",
 ]

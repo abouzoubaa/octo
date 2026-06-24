@@ -794,6 +794,19 @@ class Subscription(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class WebhookEvent(Base):
+    """Idempotency ledger: each inbound webhook event id is recorded once. A redelivery
+    (Meta retries) is detected and skipped, so a comment can't be processed twice."""
+
+    __tablename__ = "webhook_events"
+    __table_args__ = (UniqueConstraint("platform", "external_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    platform: Mapped[str] = mapped_column(String(16))  # instagram | stripe | ...
+    external_id: Mapped[str] = mapped_column(String(128))  # provider event/object id
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class AuditLog(Base):
     """Audit trail for team actions (v3) — who did what, for accountability."""
 

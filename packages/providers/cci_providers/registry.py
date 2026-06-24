@@ -53,6 +53,21 @@ def get_transcriber() -> TranscriptionProvider:
     return FakeTranscriber()
 
 
+def provider_versions() -> dict:
+    """Central AI version registry — model + version of every AI component in use,
+    for reproducibility and safe migrations (which model produced which artifact)."""
+    s = get_settings()
+    return {
+        "llm": {"provider": s.llm_provider, "model": s.llm_model},
+        "embeddings": {"provider": s.embedding_provider, "model": s.embedding_model,
+                       "version": s.embedding_version, "dims": s.embedding_dims},
+        "transcription": {"provider": s.transcription_provider, "model": s.whisper_model},
+        "ocr": {"provider": s.ocr_provider},
+        "rerank": {"provider": s.rerank_provider,
+                   "model": s.rerank_model if s.rerank_provider == "cross-encoder" else None},
+    }
+
+
 @lru_cache
 def get_reranker() -> RerankProvider | None:
     """The second-pass reranker, or None when disabled (rerank_provider='none')."""

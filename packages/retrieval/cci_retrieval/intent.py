@@ -7,6 +7,7 @@ per-post CTAs ("Comment PLAN and I'll send the exact routine").
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 from cci_providers import get_llm
@@ -20,6 +21,34 @@ NOISE_MARKERS = ("🔥", "❤", "😍", "👏", "first!", "nice", "love this", "
 INTENT_QUESTION = "question"
 INTENT_TRIGGER = "trigger"
 INTENT_OTHER = "other"
+INTENT_SPAM = "spam"
+
+# spam / abuse markers — kept OUT of demand signals and never DM-replied
+_SPAM_MARKERS = (
+    "follow me", "f4f", "follow back", "check my", "dm me to earn", "make money",
+    "click the link in my", "free followers", "promo code", "investment", "crypto giveaway",
+    "onlyfans", "telegram", "whatsapp +", "earn $", "buy followers",
+)
+_URL_RE = re.compile(r"https?://|www\.|\.com\b|\.net\b|t\.me/", re.I)
+
+
+def is_spam(text: str) -> bool:
+    """Heuristic spam/abuse detector: promo links, engagement-farming, money lures.
+
+    Conservative — only obvious spam, so genuine questions are never dropped.
+    """
+    low = (text or "").lower().strip()
+    if not low:
+        return False
+    if any(m in low for m in _SPAM_MARKERS):
+        return True
+    # a link plus a promo-ish word is spam; a bare link in a question is not
+    if _URL_RE.search(low) and any(w in low for w in ("follow", "earn", "free", "promo", "buy", "$")):
+        return True
+    # the same character repeated a lot ("aaaaaaa", "🔥"*20) is engagement bait
+    if re.search(r"(.)\1{9,}", low):
+        return True
+    return False
 
 SYSTEM_PROMPT = """\
 You classify Instagram comment intent for a creator's archive assistant.
@@ -41,6 +70,10 @@ def detect_intent(text: str, trigger_keywords: list[str] | None = None) -> Inten
     lowered = stripped.lower()
     if not stripped:
         return IntentResult(INTENT_OTHER, 1.0)
+
+    # 0) spam/abuse — excluded from demand and never DM-replied (checked first)
+    if is_spam(stripped):
+        return IntentResult(INTENT_SPAM, 0.95)
 
     # 1) per-post CTA triggers ("Comment PLAN ...") — exact word match, highest priority
     for kw in trigger_keywords or []:

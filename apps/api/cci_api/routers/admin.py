@@ -46,6 +46,15 @@ def list_creators(db: Session = Depends(get_db)) -> list[dict]:
              "status": c.status.value} for c in rows]
 
 
+@router.get("/versions")
+def ai_versions() -> dict:
+    """The AI version registry — which model/version powers each component (for
+    reproducibility and planned re-embed/re-enrich migrations)."""
+    from cci_providers import provider_versions
+
+    return provider_versions()
+
+
 class TokenIn(BaseModel):
     platform: str
     access_token: str

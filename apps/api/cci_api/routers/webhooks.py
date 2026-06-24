@@ -45,8 +45,26 @@ async def receive(request: Request) -> dict:
             if change.get("field") != "comments":
                 continue
             value = change.get("value", {})
+            if not _claim_event("instagram", value.get("id")):
+                continue  # duplicate redelivery — Meta retries; process exactly once
             queued += _enqueue_comment(ig_user_id, value)
     return {"received": True, "queued": queued}
+
+
+def _claim_event(platform: str, external_id: str | None) -> bool:
+    """Record a webhook event id once; return False if already seen (idempotency)."""
+    if not external_id:
+        return True  # nothing to dedupe on — process it
+    from sqlalchemy.exc import IntegrityError
+
+    from cci_core.models import WebhookEvent
+
+    try:
+        with session_scope() as session:
+            session.add(WebhookEvent(platform=platform, external_id=str(external_id)))
+        return True
+    except IntegrityError:
+        return False  # unique (platform, external_id) violated → already processed
 
 
 def _verify_signature(header: str, body: bytes) -> None:
