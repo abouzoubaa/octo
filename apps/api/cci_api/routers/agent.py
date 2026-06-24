@@ -622,6 +622,46 @@ def series(topic_id: str, db: Session = Depends(get_db)) -> dict:
     return build_series(db, topic.creator_id, topic)
 
 
+# ---------------------------------------------------- cross-platform (Sift & Shift)
+
+
+class ImportIn(BaseModel):
+    platform: str
+    items: list[dict]
+
+
+@router.post("/creators/{creator_id}/import")
+def import_content(creator_id: str, body: ImportIn, db: Session = Depends(get_db)) -> dict:
+    """Creator-owned content import (the TikTok archive MVP path / any import platform)."""
+    from cci_workers.ingest_import import ingest_imported
+
+    try:
+        return ingest_imported(creator_id, body.platform, body.items)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/creators/{creator_id}/sift-and-shift")
+def sift_and_shift(creator_id: str, target_platform: str = "tiktok",
+                   db: Session = Depends(get_db)) -> list[dict]:
+    """Cross-platform demand router: answers you have elsewhere but not on the target
+    platform, where there's demand."""
+    from cci_agent.repurposing import sift_and_shift_opportunities
+
+    return sift_and_shift_opportunities(db, creator_id, target_platform)
+
+
+@router.post("/posts/{post_id}/shift")
+def shift(post_id: str, target_platform: str = "tiktok", db: Session = Depends(get_db)) -> dict:
+    """Draft a platform-native version of a source post for another platform."""
+    from cci_agent.repurposing import draft_shift
+    from cci_core.models import Post
+
+    if db.get(Post, post_id) is None:
+        raise HTTPException(status_code=404, detail="post not found")
+    return draft_shift(db, post_id, target_platform)
+
+
 # ---------------------------------------------------------------- revenue
 
 

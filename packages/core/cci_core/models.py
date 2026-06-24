@@ -423,6 +423,9 @@ class DemandTopic(Base):
     duplication_rate: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0..1
     # exposure-normalized organic demand (asks per 1k impressions); None without insights
     demand_per_1k_impressions: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # per-platform/source breakdown: where this demand came from + a segment label
+    source_breakdown: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    demand_segment: Mapped[str | None] = mapped_column(String(24), nullable=True)  # everywhere|platform:x|search_only
     # --- explainable Opportunity Score (components exposed, not a black box) ---
     opportunity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     opportunity_components: Mapped[dict | None] = mapped_column(JSON, nullable=True)

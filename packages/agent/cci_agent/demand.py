@@ -83,6 +83,9 @@ def compute_integrity(session: Session, creator_id: str, cluster: list[tuple],
     # --- exposure-normalized organic demand (asks per 1k impressions) ---
     demand_per_1k = _exposure_normalized(session, organic, cluster)
 
+    # --- per-platform/source breakdown + segment label ---
+    breakdown, segment = _demand_segmentation(session, comments, n_searches)
+
     return {
         "unique_askers": unique_askers,
         "organic_count": organic,
@@ -93,7 +96,40 @@ def compute_integrity(session: Session, creator_id: str, cluster: list[tuple],
         "manipulation_risk": manipulation_risk,
         "duplication_rate": round(duplication_rate, 3),
         "demand_per_1k_impressions": demand_per_1k,
+        "source_breakdown": breakdown,
+        "demand_segment": segment,
     }
+
+
+def _demand_segmentation(session: Session, comments: list, n_searches: int) -> tuple[dict, str]:
+    """Where did this demand come from? Per-platform comment counts + on-site search.
+
+    Segments: 'everywhere' (≥2 platforms), 'platform:<x>' (one platform dominates),
+    'search_only' (mostly the creator's own search page). The same person is never
+    merged across platforms — we count topics by source, not identities.
+    """
+    from cci_core.models import Post
+
+    breakdown: dict[str, int] = {}
+    if n_searches:
+        breakdown["search"] = n_searches
+    if comments:
+        post_ids = [c.post_id for c in comments if c.post_id]
+        plat_by_post = {}
+        if post_ids:
+            plat_by_post = {pid: plat for pid, plat in session.execute(
+                select(Post.id, Post.platform).where(Post.id.in_(post_ids)))}
+        for c in comments:
+            plat = plat_by_post.get(c.post_id, "unknown") if c.post_id else "unknown"
+            breakdown[plat] = breakdown.get(plat, 0) + 1
+    platforms = [k for k in breakdown if k not in ("search", "unknown")]
+    if len(platforms) >= 2:
+        segment = "everywhere"
+    elif platforms:
+        segment = f"platform:{platforms[0]}"
+    else:
+        segment = "search_only"
+    return breakdown, segment
 
 
 def _exposure_normalized(session: Session, organic: int, cluster: list[tuple]) -> float | None:

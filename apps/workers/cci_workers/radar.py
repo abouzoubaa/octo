@@ -196,6 +196,8 @@ def _make_card(session: Session, creator_id: str, cluster: list[tuple],
         manipulation_risk=integ["manipulation_risk"],
         duplication_rate=integ["duplication_rate"],
         demand_per_1k_impressions=integ["demand_per_1k_impressions"],
+        source_breakdown=integ["source_breakdown"],
+        demand_segment=integ["demand_segment"],
         opportunity_score=opp["score"],
         opportunity_components=opp["components"],
     )

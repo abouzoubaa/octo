@@ -37,6 +37,15 @@ want, and helps you build it."**
 
 ---
 
+> **Cross-platform foundation (built):** Sift sits *above* the platforms via a
+> Connector framework + capability registry (Instagram, YouTube, TikTok), a
+> first-class `PlatformAccount`, Canonical Answer Objects (repurposed posts grouped
+> as variants of one idea), per-platform demand segmentation ("asked everywhere /
+> only on X"), creator-import ingestion (the TikTok archive MVP path), and the
+> **Sift & Shift** cross-platform demand router (answered on platform A, asked on
+> B → platform-native draft). TikTok ships at Archive vs Full-loop capability
+> levels; the UI shows which is active. Never scrapes — official APIs + imports only.
+
 ## The agent loop
 
 v1 has three audience-facing steps; the agent adds three that turn insight into action:

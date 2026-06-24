@@ -77,6 +77,61 @@ def sift_and_shift(session: Session, creator_id: str, target_format: str = "ig_c
     return drafts
 
 
+def sift_and_shift_opportunities(session: Session, creator_id: str,
+                                 target_platform: str = "tiktok") -> list[dict]:
+    """The flagship cross-platform workflow: find canonical answers the creator has
+    on SOME platform but NOT on `target_platform`, where there's audience demand —
+    then offer a platform-native draft grounded in the existing source.
+
+    'Your audience asks this on TikTok, but you only answered it on YouTube. Here's a
+    TikTok script grounded in that video.'
+    """
+    from cci_agent.canonical import variants_of
+    from cci_core.models import CanonicalContent
+
+    opportunities = []
+    for c in session.scalars(
+            select(CanonicalContent).where(CanonicalContent.creator_id == creator_id)):
+        variants = variants_of(session, c.id)
+        platforms = {v.platform for v in variants}
+        if target_platform in platforms or not platforms:
+            continue  # already on the target, or nothing to migrate from
+        # a source variant with substantive material (prefer one with a transcript)
+        source = max(variants, key=lambda v: len(v.caption or ""))
+        for v in variants:
+            if session.scalar(select(Transcript).where(Transcript.post_id == v.id)):
+                source = v
+                break
+        # is there demand for this topic? (any demand cluster overlapping the title)
+        words = {w for w in (c.title or "").lower().split() if len(w) > 3}
+        demand = session.scalars(
+            select(DemandTopic).where(DemandTopic.creator_id == creator_id)).all()
+        has_demand = any(
+            words & {w for w in (d.label or "").lower().split() if len(w) > 3}
+            for d in demand)
+        opportunities.append({
+            "canonical_id": c.id, "title": c.title,
+            "source_platform": source.platform, "source_post_id": source.id,
+            "target_platform": target_platform,
+            "covered_on": sorted(platforms),
+            "has_demand": has_demand,
+        })
+    # demand-backed migrations first
+    opportunities.sort(key=lambda o: not o["has_demand"])
+    return opportunities
+
+
+def draft_shift(session: Session, source_post_id: str, target_platform: str) -> dict:
+    """Generate the platform-native draft for a Sift & Shift opportunity, grounded in
+    the source post (e.g. a YouTube transcript → a TikTok script)."""
+    fmt = {"tiktok": "tiktok_hooks", "instagram": "ig_carousel",
+           "youtube": "newsletter"}.get(target_platform, "tiktok_hooks")
+    adapted = repurpose(session, source_post_id, fmt)
+    adapted["target_platform"] = target_platform
+    adapted["migrated"] = True
+    return adapted
+
+
 def build_series(session: Session, creator_id: str, topic: DemandTopic) -> dict:
     """When a topic draws repeated demand, propose a planned arc: parts, FAQ, DM
     follow-up, offer tie-in."""

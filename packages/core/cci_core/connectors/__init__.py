@@ -16,6 +16,7 @@ from cci_core.connectors.base import (
     supports,
 )
 from cci_core.connectors.instagram import InstagramConnector
+from cci_core.connectors.tiktok import TikTokConnector
 from cci_core.connectors.youtube import YouTubeConnector
 
 _REGISTRY: dict[str, type[Connector]] = {}
@@ -43,6 +44,7 @@ def capabilities_for(platform: str) -> set[str]:
 # register the built-in connectors
 register(InstagramConnector)
 register(YouTubeConnector)
+register(TikTokConnector)
 
 __all__ = [
     "Connector", "NormalizedContent", "NormalizedInteraction", "IngestMode",
