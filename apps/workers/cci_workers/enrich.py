@@ -48,6 +48,10 @@ def process_post(post_id: str) -> dict:
                 Path(local).unlink(missing_ok=True)
         stats["enriched"] = _enrich(session, post)
         stats["chunks"] = index_post(session, post)
+        # versioned claim layer: extract atomic claims for freshness/contradiction
+        from cci_agent.claims import extract_claims
+
+        stats["claims"] = len(extract_claims(session, post))
     return stats
 
 

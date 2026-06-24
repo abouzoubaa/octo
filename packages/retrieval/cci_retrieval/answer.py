@@ -36,6 +36,7 @@ class AnswerCard:
     citations: list[dict] = field(default_factory=list)  # {post_id, chunk_id, quote, n}
     confidence: float = 0.0
     results: list[PostResult] = field(default_factory=list)
+    freshness: list[dict] = field(default_factory=list)  # superseded-source notes (set by serving layer)
 
 
 def generate_answer(session: Session, creator_id: str, question: str) -> AnswerCard:

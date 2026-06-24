@@ -161,6 +161,18 @@ class FakeLLM(LLMProvider):
                 overlap = len(q_tokens & pt) / (len(q_tokens) or 1)
                 scores.append({"n": int(n), "score": round(min(overlap, 1.0), 3)})
             return json.dumps({"scores": scores})
+        if "atomic factual claims" in sys_l:  # claim extraction
+            import re
+
+            sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", user) if len(s.strip()) > 25]
+            claims = [{"text": s[:200], "topic": " ".join(s.lower().split()[:3]),
+                       "validity": "current"} for s in sentences[:8]]
+            return json.dumps({"claims": claims})
+        if "supersede" in sys_l:  # contradiction judge — deterministic offline
+            u = user.lower()
+            flag = any(w in u for w in ("instead", "no longer", "used to", "updated",
+                                        "now i", "changed", "don't recommend"))
+            return json.dumps({"supersedes": bool(flag)})
         if "thumbnail" in sys_l:
             return json.dumps({"concepts": [
                 {"text_overlay": first_line[:40] or "WATCH THIS", "layout": "face",

@@ -273,6 +273,41 @@ def recall(creator_id: str, q: str, db: Session = Depends(get_db)) -> list[dict]
     return creator_recall(db, creator_id, q)
 
 
+# ---------------------------------------------------------- versioned claim layer
+
+
+@router.get("/creators/{creator_id}/claims")
+def list_claims(creator_id: str, validity: str | None = None,
+                db: Session = Depends(get_db)) -> list[dict]:
+    from cci_core.models import Claim
+
+    stmt = select(Claim).where(Claim.creator_id == creator_id)
+    if validity:
+        stmt = stmt.where(Claim.validity == validity)
+    rows = db.scalars(stmt.order_by(Claim.created_at.desc()).limit(200)).all()
+    return [{"id": c.id, "text": c.text, "topic": c.topic, "post_id": c.post_id,
+             "validity": c.validity.value, "approved": c.approved,
+             "superseded_by": c.superseded_by} for c in rows]
+
+
+@router.post("/claims/{claim_id}/approve")
+def approve_claim_endpoint(claim_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.claims import approve_claim
+
+    claim = approve_claim(db, claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail="claim not found")
+    return {"id": claim.id, "approved": claim.approved}
+
+
+@router.post("/creators/{creator_id}/claims/detect-contradictions")
+def detect_contradictions_endpoint(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    """Mark older claims superseded by newer contradicting ones (freshness handling)."""
+    from cci_agent.claims import detect_contradictions
+
+    return {"superseded": detect_contradictions(db, creator_id)}
+
+
 # ------------------------------------------------------------- briefing + gap map
 
 

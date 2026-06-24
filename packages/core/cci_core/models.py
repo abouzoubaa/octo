@@ -706,6 +706,40 @@ class ApiKey(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ClaimValidity(str, enum.Enum):
+    current = "current"  # the creator's current position
+    dated = "dated"  # explicitly time-bound ("in 2024 I...")
+    uncertain = "uncertain"  # hedged / low confidence
+    superseded = "superseded"  # a newer claim replaced this one
+
+
+class Claim(Base):
+    """A versioned, atomic statement the creator made — with its exact source span,
+    validity, and supersession history. The fix for freshness/contradiction handling:
+    retrieving 'whichever semantically similar chunk ranks first' can surface stale
+    advice; a claim layer lets Sift prefer the creator's CURRENT position and flag
+    when older content was updated."""
+
+    __tablename__ = "claims"
+    __table_args__ = (Index("ix_claims_creator_topic", "creator_id", "topic"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    post_id: Mapped[str] = mapped_column(ForeignKey("posts.id", ondelete="CASCADE"))
+    text: Mapped[str] = mapped_column(Text)  # the atomic claim
+    topic: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # exact source span for verifiable citation
+    source: Mapped[str | None] = mapped_column(String(16), nullable=True)  # caption|transcript|ocr
+    start_ts: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quote: Mapped[str | None] = mapped_column(Text, nullable=True)
+    validity: Mapped[ClaimValidity] = mapped_column(
+        Enum(ClaimValidity, native_enum=False), default=ClaimValidity.current)
+    approved: Mapped[bool] = mapped_column(Boolean, default=False)  # creator-approved reuse
+    superseded_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Plan(str, enum.Enum):
     free = "free"  # public audience search page only
     creator = "creator"  # Radar digest, answer card, affiliate, briefing

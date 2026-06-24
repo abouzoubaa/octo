@@ -53,6 +53,7 @@ class AnswerOut(BaseModel):
     citations: list[CitationOut] = []
     confidence: float
     answer_id: str | None = None
+    freshness: list[dict] = []  # 'the creator later updated this' notes (claim layer)
 
 
 class SearchResponse(BaseModel):
@@ -85,6 +86,7 @@ def search_endpoint(
             state=card.state, text=card.text,
             citations=[CitationOut(**c) for c in card.citations],
             confidence=round(card.confidence, 3), answer_id=answer_id,
+            freshness=_freshness_for(db, card),
         )
     else:
         results = search(db, creator.id, q)
@@ -118,6 +120,15 @@ def search_endpoint(
         answer=answer_out,
         deep_link=deep_link,
     )
+
+
+def _freshness_for(db: Session, card) -> list[dict]:
+    """Flag cited sources the creator later updated (versioned claim layer)."""
+    if card.state != "answered":
+        return []
+    from cci_agent.claims import claim_freshness
+
+    return claim_freshness(db, [c["post_id"] for c in card.citations])
 
 
 def _result_out(db: Session, r) -> ResultOut:
