@@ -169,3 +169,134 @@ def list_outcomes(creator_id: str, stage: str | None = None, limit: int = 50,
     return [{"id": o.id, "source": o.source, "question": o.question_text,
              "served_state": o.served_state, "stage": o.stage,
              "creator_action": o.creator_action, "result": o.result} for o in rows]
+
+
+# ============================================================ v1.5 assist features
+
+
+# ---------------------------------------------------- content production (drafting)
+
+
+@router.post("/demand/{topic_id}/draft")
+def make_draft(topic_id: str, db: Session = Depends(get_db)) -> dict:
+    """Generate a grounded content brief + reel script/hooks from a demand cluster."""
+    from cci_agent.drafting import generate_draft
+    from cci_core.agent_foundations import DemandState, transition_demand
+
+    topic = db.get(DemandTopic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail="demand topic not found")
+    draft = generate_draft(db, topic.creator_id, topic, persist=True)
+    # advance the lifecycle if the creator is acting on it
+    if topic.state in (DemandState.new, DemandState.idea):
+        try:
+            transition_demand(db, topic,
+                              DemandState.drafting if topic.state == DemandState.idea
+                              else DemandState.idea)
+        except Exception:  # noqa: BLE001
+            pass
+    return {"draft_id": draft.id, "title": draft.title, "hooks": draft.hooks,
+            "script": draft.script, "cta": draft.cta, "brief": draft.brief}
+
+
+@router.get("/creators/{creator_id}/drafts")
+def list_drafts(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    from cci_core.models import ContentDraft
+
+    rows = db.scalars(
+        select(ContentDraft).where(ContentDraft.creator_id == creator_id)
+        .order_by(ContentDraft.created_at.desc())
+    ).all()
+    return [{"id": d.id, "title": d.title, "hooks": d.hooks, "script": d.script,
+             "cta": d.cta, "status": d.status, "demand_topic_id": d.demand_topic_id}
+            for d in rows]
+
+
+class DraftDecision(BaseModel):
+    approve: bool
+    edited_script: str | None = None
+
+
+@router.post("/drafts/{draft_id}/decide")
+def decide_draft(draft_id: str, body: DraftDecision, db: Session = Depends(get_db)) -> dict:
+    """Approve (capturing voice) or leave a draft; never auto-publishes."""
+    from cci_core.agent_foundations import capture_voice
+    from cci_core.models import ContentDraft
+
+    draft = db.get(ContentDraft, draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="draft not found")
+    if body.approve:
+        if body.edited_script and body.edited_script != draft.script:
+            capture_voice(db, draft.creator_id, "caption", body.edited_script,
+                          original_draft=draft.script, source="edit")
+            draft.script = body.edited_script
+        elif draft.hooks:
+            capture_voice(db, draft.creator_id, "hook", draft.hooks[0], source="approved")
+        draft.status = "approved"
+    return {"id": draft.id, "status": draft.status}
+
+
+@router.get("/creators/{creator_id}/recall")
+def recall(creator_id: str, q: str, db: Session = Depends(get_db)) -> list[dict]:
+    """Creator recall search: 'where did I say that?'"""
+    from cci_agent.drafting import creator_recall
+
+    return creator_recall(db, creator_id, q)
+
+
+# ------------------------------------------------------------- briefing + gap map
+
+
+@router.get("/creators/{creator_id}/briefing")
+def briefing(creator_id: str, with_draft: bool = True, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.briefing import build_briefing
+
+    result = build_briefing(db, creator_id, with_draft=with_draft)
+    if result is None:
+        raise HTTPException(status_code=404, detail="no demand signal yet this week")
+    return result
+
+
+@router.get("/creators/{creator_id}/gap-map")
+def gap_map(creator_id: str, week: str | None = None, db: Session = Depends(get_db)) -> list[dict]:
+    from cci_agent.briefing import content_gap_map
+
+    return content_gap_map(db, creator_id, week)
+
+
+# --------------------------------------------------------------- inbox + playbooks
+
+
+@router.get("/creators/{creator_id}/inbox")
+def inbox(creator_id: str, limit: int = 50, db: Session = Depends(get_db)) -> list[dict]:
+    from cci_agent.inbox import labelled_inbox
+
+    return labelled_inbox(db, creator_id, limit)
+
+
+class PlaybookIn(BaseModel):
+    name: str
+    trigger_keywords: list[str] | None = None
+    intent: str | None = None
+    public_reply_template: str | None = None
+    dm_template: str | None = None
+
+
+@router.post("/creators/{creator_id}/playbooks")
+def add_playbook(creator_id: str, body: PlaybookIn, db: Session = Depends(get_db)) -> dict:
+    from cci_core.models import Playbook
+
+    pb = Playbook(creator_id=creator_id, **body.model_dump())
+    db.add(pb)
+    db.flush()
+    return {"id": pb.id}
+
+
+@router.get("/creators/{creator_id}/playbooks")
+def list_playbooks(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    from cci_core.models import Playbook
+
+    rows = db.scalars(select(Playbook).where(Playbook.creator_id == creator_id)).all()
+    return [{"id": p.id, "name": p.name, "trigger_keywords": p.trigger_keywords,
+             "intent": p.intent, "active": p.active} for p in rows]

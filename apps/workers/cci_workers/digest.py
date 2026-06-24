@@ -66,3 +66,20 @@ def send_digest(creator_id: str) -> bool:
         return False
     log.info("DIGEST for %s:\n%s", creator_id, digest)
     return True
+
+
+def send_briefing(creator_id: str) -> bool:
+    """Agent-layer (v1.5): the richer Briefing — top demand + hooks + gaps +
+    re-promotion pick + one drafted post. Replaces the plain digest once the
+    agent layer is enabled for a creator."""
+    from cci_core.db import session_scope
+
+    with session_scope() as session:
+        from cci_agent.briefing import build_briefing, render_briefing_text
+
+        briefing = build_briefing(session, creator_id, with_draft=True)
+        if briefing is None:
+            log.info("no demand signal this week for %s — no briefing", creator_id)
+            return False
+        log.info("BRIEFING for %s:\n%s", creator_id, render_briefing_text(briefing))
+    return True

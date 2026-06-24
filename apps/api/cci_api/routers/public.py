@@ -154,6 +154,23 @@ def track_click(post_id: str, creator: Creator = Depends(get_creator),
     return {"ok": True}
 
 
+class WaitlistIn(BaseModel):
+    email: str
+    topic: str
+
+
+@router.post("/api/{handle}/waitlist")
+def join_waitlist(body: WaitlistIn, creator: Creator = Depends(get_creator),
+                  db: Session = Depends(get_db)) -> dict:
+    """No-answer waitlist: 'want a heads-up when @creator covers this?' — captures
+    a lead on a weak result and feeds the demand/gap map."""
+    from cci_agent.inbox import add_to_waitlist
+
+    add_to_waitlist(db, creator.id, body.email.strip(), body.topic.strip())
+    events.track(db, "waitlist_join", creator.id, topic=body.topic)
+    return {"ok": True}
+
+
 @router.get("/api/{handle}/buy/{product_id}")
 def affiliate_redirect(product_id: str, creator: Creator = Depends(get_creator),
                        db: Session = Depends(get_db)):

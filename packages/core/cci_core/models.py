@@ -528,3 +528,67 @@ class CreatorRules(Base):
         JSON, nullable=True
     )  # intent types pre-cleared for automation (still gated by eval)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# =====================================================================================
+# AGENT LAYER — v1.5 "assist" features (content production, inbox, monetization)
+# =====================================================================================
+
+
+class ContentDraft(Base):
+    """A content brief + draft (script/hooks) generated from a demand cluster.
+
+    Grounded in the creator's own content (cited source posts) and the audience's
+    literal phrasing; the creator edits/approves — never auto-published.
+    """
+
+    __tablename__ = "content_drafts"
+    __table_args__ = (Index("ix_content_drafts_creator", "creator_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    demand_topic_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    title: Mapped[str] = mapped_column(String(256))
+    brief: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {phrasing, gaps, cta, sources}
+    hooks: Mapped[list | None] = mapped_column(JSON, nullable=True)  # candidate hook lines
+    script: Mapped[str | None] = mapped_column(Text, nullable=True)  # reel/video script
+    cta: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_post_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)  # grounding citations
+    status: Mapped[str] = mapped_column(String(16), default="draft")  # draft|approved|published
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class WaitlistEntry(Base):
+    """No-answer waitlist: when retrieval is weak, capture a lead who wants a
+    heads-up when the creator covers the topic. Validates demand + feeds the gap map.
+    """
+
+    __tablename__ = "waitlist_entries"
+    __table_args__ = (Index("ix_waitlist_creator_notified", "creator_id", "notified"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    email: Mapped[str] = mapped_column(String(256))
+    topic: Mapped[str] = mapped_column(Text)  # the question that had no strong answer
+    demand_topic_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Playbook(Base):
+    """Saved playbook: 'when I get this kind of question, do this' — a reusable
+    template for comments, DMs, and follow-ups so recurring situations are consistent.
+    """
+
+    __tablename__ = "playbooks"
+    __table_args__ = (Index("ix_playbooks_creator", "creator_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(128))
+    trigger_keywords: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    intent: Mapped[str | None] = mapped_column(String(32), nullable=True)  # match by intent label
+    public_reply_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dm_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

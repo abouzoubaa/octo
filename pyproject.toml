@@ -47,7 +47,7 @@ cci-migrate = "cci_core.bootstrap:init_db"
 py-modules = []
 
 [tool.setuptools.packages.find]
-where = ["packages/core", "packages/providers", "packages/retrieval", "apps/api", "apps/workers", "eval"]
+where = ["packages/core", "packages/providers", "packages/retrieval", "packages/agent", "apps/api", "apps/workers", "eval"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
