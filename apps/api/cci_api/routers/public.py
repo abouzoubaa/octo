@@ -95,9 +95,19 @@ def search_endpoint(
         confidence=answer_out.confidence if answer_out else None,
     )
     db.add(query_row)
+    db.flush()
     events.track(db, events.SEARCH, creator.id, q=q, n_results=len(results))
     if answer_out and answer_out.state == "no_strong_answer":
         events.track(db, events.NO_ANSWER, creator.id, q=q)
+
+    # outcome log: open the outcome edge for this served search (agent foundations)
+    if answer_out is not None:
+        from cci_core.agent_foundations import record_outcome
+
+        record_outcome(
+            db, creator.id, source="search", question_text=q, query_id=query_row.id,
+            answer_id=answer_id, served_state=answer_out.state, confidence=answer_out.confidence,
+        )
 
     deep_link = answer_link(creator.handle, q, answer_id) if answer_id else search_link(creator.handle, q)
     return SearchResponse(

@@ -140,8 +140,15 @@ def decide_dm(job_id: str, body: DmDecision, db: Session = Depends(get_db)) -> d
     if job is None or job.status != DmStatus.pending_approval:
         raise HTTPException(status_code=404, detail="job not found or already decided")
     if body.approve:
-        if body.edited_dm_text:
+        # voice memory: an edited approval teaches the creator's voice (foundations)
+        from cci_core.agent_foundations import capture_voice
+
+        if body.edited_dm_text and body.edited_dm_text != job.dm_text:
+            capture_voice(db, job.creator_id, "dm", body.edited_dm_text,
+                          original_draft=job.dm_text, source="edit")
             job.dm_text = body.edited_dm_text
+        elif job.dm_text:
+            capture_voice(db, job.creator_id, "dm", job.dm_text, source="approved")
         if body.edited_public_reply:
             job.public_reply = body.edited_public_reply
         job.status = DmStatus.approved
@@ -167,7 +174,7 @@ def radar_cards(creator_id: str, week: str | None = None,
         "wow_change": c.wow_change, "coverage": c.coverage,
         "audience_language": c.audience_language, "recommendation": c.recommendation,
         "linked_products": c.linked_products, "confidence": c.confidence,
-        "creator_marked": c.creator_marked,
+        "creator_marked": c.creator_marked, "state": c.state.value,
     } for c in cards]
 
 

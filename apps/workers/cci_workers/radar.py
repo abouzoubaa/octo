@@ -64,23 +64,28 @@ def build_radar(creator_id: str, *, backlog: bool = False) -> int:
 
 
 def _collect_signals(session: Session, creator_id: str,
-                     since: datetime | None) -> list[tuple[str, str]]:
-    """Return (kind, text) where kind ∈ {search, comment}."""
+                     since: datetime | None) -> list[tuple[str, str, str | None]]:
+    """Return (kind, text, comment_id) where kind ∈ {search, comment}.
+
+    comment_id is carried so the radar card can remember its askers (Loop-Closer).
+    """
     q_stmt = select(Query.text).where(Query.creator_id == creator_id)
-    c_stmt = select(Comment.text).where(
+    c_stmt = select(Comment.text, Comment.id).where(
         Comment.creator_id == creator_id, Comment.is_question.is_(True)
     )
     if since is not None:
         q_stmt = q_stmt.where(Query.created_at >= since)
         c_stmt = c_stmt.where(Comment.ingested_at >= since)
-    signals = [("search", t) for t in session.scalars(q_stmt)]
-    signals += [("comment", t) for t in session.scalars(c_stmt)]
-    return [(k, t.strip()) for k, t in signals if t and t.strip()]
+    signals: list[tuple[str, str, str | None]] = [
+        ("search", t, None) for t in session.scalars(q_stmt)
+    ]
+    signals += [("comment", t, cid) for t, cid in session.execute(c_stmt)]
+    return [(k, t.strip(), cid) for k, t, cid in signals if t and t.strip()]
 
 
-def _cluster(signals: list[tuple[str, str]]) -> list[list[tuple[str, str]]]:
+def _cluster(signals: list[tuple]) -> list[list[tuple]]:
     """Greedy centroid clustering over embeddings — simple, deterministic, plenty for v1."""
-    texts = [t for _, t in signals]
+    texts = [s[1] for s in signals]
     vectors = np.array(get_embedding_provider().embed(texts), dtype=float)
     norms = np.linalg.norm(vectors, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
@@ -116,14 +121,15 @@ def _previous_week_counts(session: Session, creator_id: str, now: datetime) -> d
     return {t.label.lower(): t.search_count + t.comment_count for t in rows}
 
 
-def _make_card(session: Session, creator_id: str, cluster: list[tuple[str, str]],
+def _make_card(session: Session, creator_id: str, cluster: list[tuple],
                week: str, prev_counts: dict[str, int]) -> DemandTopic | None:
-    search_count = sum(1 for k, _ in cluster if k == "search")
-    comment_count = sum(1 for k, _ in cluster if k == "comment")
-    verbatims = [t for _, t in cluster][:5]
+    search_count = sum(1 for s in cluster if s[0] == "search")
+    comment_count = sum(1 for s in cluster if s[0] == "comment")
+    verbatims = [s[1] for s in cluster][:5]
+    asker_comment_ids = [s[2] for s in cluster if s[0] == "comment" and s[2]]
 
     # coverage check: does the corpus already answer this?
-    representative = max((t for _, t in cluster), key=len)
+    representative = max((s[1] for s in cluster), key=len)
     results = search(session, creator_id, representative, top_k=3)
     confidence = retrieval_confidence(results)
     coverage = {
@@ -169,4 +175,5 @@ def _make_card(session: Session, creator_id: str, cluster: list[tuple[str, str]]
         recommendation=data.get("recommendation"),
         linked_products=linked or None,
         confidence=data.get("confidence", "medium"),
+        asker_comment_ids=asker_comment_ids or None,
     )

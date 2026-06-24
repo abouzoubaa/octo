@@ -309,6 +309,28 @@ class DmJob(Base):
 # ------------------------------------------------------------------- Demand Radar
 
 
+class DemandState(str, enum.Enum):
+    """Lifecycle of a 'useful' demand item — the agent moves it through these."""
+
+    new = "new"  # surfaced, creator hasn't triaged
+    idea = "idea"  # creator marked it worth making
+    drafting = "drafting"  # a content brief/draft exists
+    published = "published"  # the creator shipped the post answering it
+    loop_closed = "loop_closed"  # original askers notified (Loop-Closer)
+    dismissed = "dismissed"  # creator marked not useful
+
+
+# valid forward transitions for the demand-item state machine
+DEMAND_TRANSITIONS: dict[DemandState, set[DemandState]] = {
+    DemandState.new: {DemandState.idea, DemandState.dismissed},
+    DemandState.idea: {DemandState.drafting, DemandState.dismissed},
+    DemandState.drafting: {DemandState.published, DemandState.idea},
+    DemandState.published: {DemandState.loop_closed},
+    DemandState.loop_closed: set(),
+    DemandState.dismissed: {DemandState.idea},
+}
+
+
 class DemandTopic(Base):
     __tablename__ = "demand_topics"
     __table_args__ = (Index("ix_demand_topics_creator_week", "creator_id", "week"),)
@@ -326,6 +348,14 @@ class DemandTopic(Base):
     linked_products: Mapped[list | None] = mapped_column(JSON, nullable=True)
     confidence: Mapped[str | None] = mapped_column(String(8), nullable=True)  # high|med|low
     creator_marked: Mapped[str | None] = mapped_column(String(16), nullable=True)  # useful|not|made
+    # --- agent layer: lifecycle state machine (Idea → Drafting → Published → Loop-closed) ---
+    state: Mapped[DemandState] = mapped_column(
+        Enum(DemandState, native_enum=False), default=DemandState.new
+    )
+    published_post_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    state_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # the askers behind this cluster — for Loop-Closer (pseudonymous comment ids)
+    asker_comment_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -394,3 +424,107 @@ class EvalRun(Base):
     n_questions: Mapped[int | None] = mapped_column(Integer, nullable=True)
     details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# =====================================================================================
+# AGENT LAYER — foundations the proactive features learn from (Sift agent roadmap §0)
+# =====================================================================================
+
+
+class Outcome(Base):
+    """The outcome edge of the loop: who asked → what was served → what the creator
+    did → what happened next. Lets the agent answer 'did it work?' and close loops.
+
+    One row per traceable demand interaction; enriched as the interaction progresses.
+    """
+
+    __tablename__ = "outcomes"
+    __table_args__ = (Index("ix_outcomes_creator_stage", "creator_id", "stage"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    # the asking side
+    source: Mapped[str] = mapped_column(String(16))  # search | comment | dm
+    query_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    comment_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    demand_topic_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    asker_pseudonym: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    question_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # what was served
+    answer_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    served_state: Mapped[str | None] = mapped_column(String(24), nullable=True)  # answered|no_answer
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # what the creator did
+    creator_action: Mapped[str | None] = mapped_column(String(32), nullable=True)  # approved_dm|made_post|...
+    # what happened next (the measured edge)
+    stage: Mapped[str] = mapped_column(String(24), default="served")  # served|acted|clicked|converted|closed
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {clicked, opened, converted, ...}
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class VoiceExample(Base):
+    """Voice memory: approved replies/hooks and the creator's edits to drafts, so
+    generated content stays on-voice and improves over time. Few-shot fuel for every
+    drafting feature; never invents claims (correctness stays a retrieval concern).
+    """
+
+    __tablename__ = "voice_examples"
+    __table_args__ = (Index("ix_voice_examples_creator_kind", "creator_id", "kind"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(24))  # reply | hook | caption | dm | draft_edit
+    text: Mapped[str] = mapped_column(Text)  # the approved / final text
+    prompt_context: Mapped[str | None] = mapped_column(Text, nullable=True)  # what it answered
+    original_draft: Mapped[str | None] = mapped_column(Text, nullable=True)  # pre-edit (for draft_edit)
+    source: Mapped[str] = mapped_column(String(16), default="approved")  # approved | edit | seed
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Offer(Base):
+    """Offer-awareness: the creator tags current products/offers/campaigns so Sift
+    routes every CTA and affiliate suggestion to the right one automatically.
+    An Offer may wrap a Product (affiliate) or stand alone (course, coaching, launch).
+    """
+
+    __tablename__ = "offers"
+    __table_args__ = (Index("ix_offers_creator_active", "creator_id", "active"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(256))
+    kind: Mapped[str] = mapped_column(String(24))  # product | course | coaching | newsletter | launch
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    product_id: Mapped[str | None] = mapped_column(
+        ForeignKey("products.id", ondelete="SET NULL"), nullable=True
+    )
+    topics: Mapped[list | None] = mapped_column(JSON, nullable=True)  # topics this offer serves
+    priority: Mapped[int] = mapped_column(Integer, default=0)  # higher wins when several match
+    active: Mapped[bool] = mapped_column(Boolean, default=True)  # current campaign?
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CreatorRules(Base):
+    """Rules & preferences: the business rules the agent operates under — tone, taboo
+    topics, what must escalate to a human, and monetization priorities. One row per
+    creator (the agent's operating contract).
+    """
+
+    __tablename__ = "creator_rules"
+
+    creator_id: Mapped[str] = mapped_column(
+        ForeignKey("creators.id", ondelete="CASCADE"), primary_key=True
+    )
+    tone: Mapped[str | None] = mapped_column(Text, nullable=True)  # voice/tone description
+    taboo_topics: Mapped[list | None] = mapped_column(JSON, nullable=True)  # never engage
+    escalate_topics: Mapped[list | None] = mapped_column(JSON, nullable=True)  # always human-review
+    monetization_priority: Mapped[str | None] = mapped_column(
+        String(24), nullable=True
+    )  # affiliate | course | newsletter | none
+    auto_approve_types: Mapped[list | None] = mapped_column(
+        JSON, nullable=True
+    )  # intent types pre-cleared for automation (still gated by eval)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
