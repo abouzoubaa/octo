@@ -132,12 +132,27 @@ def draft_shift(session: Session, source_post_id: str, target_platform: str,
 
     fmt = {"tiktok": "tiktok_hooks", "instagram": "ig_carousel",
            "youtube": "newsletter"}.get(target_platform, "tiktok_hooks")
+    post = session.get(Post, source_post_id)
+    if post is None:
+        raise ValueError("post not found")
+
+    # idempotent: if this source has already been shifted to this platform, reuse the
+    # existing draft instead of spawning a duplicate (and skip a fresh LLM call).
+    if persist:
+        existing = next((d for d in session.scalars(select(ContentDraft).where(
+            ContentDraft.creator_id == post.creator_id)).all()
+            if (d.brief or {}).get("migrated_from") == source_post_id
+            and (d.brief or {}).get("target_platform") == target_platform), None)
+        if existing is not None:
+            return {"target_platform": target_platform, "migrated": True,
+                    "format": fmt, "draft_id": existing.id, "reused": True,
+                    "content": existing.hooks or existing.script}
+
     adapted = repurpose(session, source_post_id, fmt)
     adapted["target_platform"] = target_platform
     adapted["migrated"] = True
 
     if persist:
-        post = session.get(Post, source_post_id)
         # tiktok_hooks → a list of hooks; other formats → a single content block
         content = adapted.get("content")
         hooks = content if isinstance(content, list) else None
@@ -208,4 +223,11 @@ def _persist_series(session: Session, creator_id: str, topic: DemandTopic,
         session.add(draft)
         session.flush()
         ids.append(draft.id)
+    # prune orphans: parts that existed in a previous (longer) plan but not this one,
+    # but keep any the creator already moved past 'draft' (edited/approved).
+    n_parts = len(data.get("parts", []))
+    for part_idx, d in existing.items():
+        if isinstance(part_idx, int) and part_idx >= n_parts and d.status == "draft":
+            session.delete(d)
+    session.flush()
     return ids

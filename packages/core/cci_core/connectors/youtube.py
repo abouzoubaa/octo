@@ -103,6 +103,10 @@ class YouTubeConnector(Connector):
         return (items[0].get("contentDetails", {})
                 .get("relatedPlaylists", {}).get("uploads"))
 
+    # page caps: a backstop against an unbounded cursor walk (≈2k items each)
+    _MAX_CONTENT_PAGES = 40
+    _MAX_COMMENT_PAGES = 20
+
     @staticmethod
     def _map_items(data: dict) -> list[NormalizedContent]:
         out: list[NormalizedContent] = []
@@ -120,33 +124,8 @@ class YouTubeConnector(Connector):
             ))
         return out
 
-    # ---- content ---------------------------------------------------------------
-
-    def backfill_content(self, account) -> list[NormalizedContent]:
-        uploads = self._uploads_playlist(account)
-        if not uploads:
-            return []
-        data = self._t.get("playlistItems", {
-            "part": "snippet,contentDetails", "playlistId": uploads,
-            "maxResults": 50}, self._token(account))
-        return self._map_items(data)
-
-    def sync_content(self, account, cursor: str | None = None):
-        uploads = self._uploads_playlist(account)
-        if not uploads:
-            return [], None
-        params = {"part": "snippet,contentDetails", "playlistId": uploads, "maxResults": 50}
-        if cursor:
-            params["pageToken"] = cursor
-        data = self._t.get("playlistItems", params, self._token(account))
-        return self._map_items(data), data.get("nextPageToken")
-
-    # ---- interactions ----------------------------------------------------------
-
-    def backfill_interactions(self, account, content_external_id: str):
-        data = self._t.get("commentThreads", {
-            "part": "snippet", "videoId": content_external_id,
-            "maxResults": 100}, self._token(account))
+    @staticmethod
+    def _map_threads(data: dict, content_external_id: str) -> list[NormalizedInteraction]:
         out: list[NormalizedInteraction] = []
         for it in data.get("items", []):
             top_wrap = it.get("snippet", {}).get("topLevelComment", {})
@@ -161,6 +140,50 @@ class YouTubeConnector(Connector):
                 created_at=_parse_dt(top.get("publishedAt")),
                 content_external_id=content_external_id, kind="comment",
             ))
+        return out
+
+    # ---- content ---------------------------------------------------------------
+
+    def backfill_content(self, account) -> list[NormalizedContent]:
+        """Walk the full uploads playlist (all pages), not just the newest 50."""
+        uploads = self._uploads_playlist(account)
+        if not uploads:
+            return []
+        out: list[NormalizedContent] = []
+        cursor = None
+        for _ in range(self._MAX_CONTENT_PAGES):
+            items, cursor = self.sync_content(account, cursor, _uploads=uploads)
+            out.extend(items)
+            if not cursor:
+                break
+        return out
+
+    def sync_content(self, account, cursor: str | None = None, *, _uploads: str | None = None):
+        uploads = _uploads or self._uploads_playlist(account)
+        if not uploads:
+            return [], None
+        params = {"part": "snippet,contentDetails", "playlistId": uploads, "maxResults": 50}
+        if cursor:
+            params["pageToken"] = cursor
+        data = self._t.get("playlistItems", params, self._token(account))
+        return self._map_items(data), data.get("nextPageToken")
+
+    # ---- interactions ----------------------------------------------------------
+
+    def backfill_interactions(self, account, content_external_id: str):
+        """All comment pages for a video. Caller is expected to tolerate a raised
+        error here (e.g. a 403 on a comments-disabled video); see sync_native."""
+        out: list[NormalizedInteraction] = []
+        cursor = None
+        for _ in range(self._MAX_COMMENT_PAGES):
+            params = {"part": "snippet", "videoId": content_external_id, "maxResults": 100}
+            if cursor:
+                params["pageToken"] = cursor
+            data = self._t.get("commentThreads", params, self._token(account))
+            out.extend(self._map_threads(data, content_external_id))
+            cursor = data.get("nextPageToken")
+            if not cursor:
+                break
         return out
 
     # ---- actions ---------------------------------------------------------------

@@ -66,24 +66,29 @@ def sync_native(creator_id: str, platform: str, *,
             session.flush()
 
             if read_comments:
-                for it in connector.backfill_interactions(account, item.external_id):
-                    if _upsert_comment(session, creator_id, post.id, it):
+                # one comments-disabled video (YouTube 403) or a transient fetch
+                # error must not abort the whole channel backfill — skip and go on.
+                try:
+                    interactions = connector.backfill_interactions(account, item.external_id)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("interactions fetch failed for %s/%s: %s",
+                                platform, item.external_id, exc)
+                    continue
+                for it in interactions:
+                    created, is_question = _upsert_comment(session, creator_id, post.id, it)
+                    if created:
                         stats["comments"] += 1
-                        if _is_question(it.text):
-                            stats["questions"] += 1
+                        stats["questions"] += int(is_question)
     log.info("native sync %s for %s: %s", platform, creator_id, stats)
     return stats
 
 
-def _is_question(text: str) -> bool:
-    return detect_intent(text or "").intent == INTENT_QUESTION
-
-
-def _upsert_comment(session, creator_id: str, post_id: str, it) -> bool:
+def _upsert_comment(session, creator_id: str, post_id: str, it) -> tuple[bool, bool]:
+    """Returns (created, is_question). Idempotent by (creator, external_id)."""
     existing = session.scalar(select(Comment).where(
         Comment.creator_id == creator_id, Comment.external_id == it.external_id))
     if existing is not None:
-        return False
+        return False, False
     text = redact_pii(it.text or "") or ""  # GDPR: strip PII before storing
     intent = detect_intent(text)
     is_question = intent.intent == INTENT_QUESTION
@@ -94,7 +99,7 @@ def _upsert_comment(session, creator_id: str, post_id: str, it) -> bool:
         intent=intent.intent,
         sentiment=score_sentiment(text, use_llm=False) if is_question else None,
     ))
-    return True
+    return True, is_question
 
 
 def _resolve_account(session, creator_id: str, platform: str):

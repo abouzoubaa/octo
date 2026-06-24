@@ -26,6 +26,8 @@ class FakeTransport:
                 "relatedPlaylists": {"uploads": "UU_uploads"}}}]}
         if path == "playlistItems":
             assert params["playlistId"] == "UU_uploads"
+            if params.get("pageToken"):  # second page ends the walk
+                return {"items": []}
             return {"items": [
                 {"snippet": {"title": "Best travel eSIM", "description": "regional coverage tips",
                              "publishedAt": "2026-06-01T10:00:00Z"},
@@ -76,6 +78,44 @@ def test_backfill_content_maps_videos():
 def test_sync_content_returns_cursor():
     items, cursor = _conn().sync_content(_account())
     assert cursor == "PAGE2" and len(items) == 2
+
+
+class PagedTransport(FakeTransport):
+    """Two pages of uploads, then a comments page that 403s (comments disabled)."""
+
+    def get(self, path, params, token):
+        if path == "channels":
+            return {"items": [{"contentDetails": {
+                "relatedPlaylists": {"uploads": "UU_uploads"}}}]}
+        if path == "playlistItems":
+            if not params.get("pageToken"):
+                return {"items": [{"snippet": {"title": "v1"},
+                                   "contentDetails": {"videoId": "vid-1"}}],
+                        "nextPageToken": "P2"}
+            return {"items": [{"snippet": {"title": "v2"},
+                               "contentDetails": {"videoId": "vid-2"}}]}  # no nextPageToken
+        if path == "commentThreads":
+            import httpx
+            req = httpx.Request("GET", "https://x/commentThreads")
+            raise httpx.HTTPStatusError("forbidden", request=req,
+                                        response=httpx.Response(403, request=req))
+        raise AssertionError(path)
+
+
+def test_backfill_content_paginates_all_pages():
+    items = YouTubeConnector(transport=PagedTransport()).backfill_content(_account())
+    assert [i.external_id for i in items] == ["vid-1", "vid-2"]  # both pages walked
+
+
+def test_sync_native_survives_comments_disabled(creator, session):
+    """A 403 on one video's comments must not abort the whole channel backfill."""
+    from cci_workers.sync_native import sync_native
+
+    stats = sync_native(creator.id, "youtube",
+                        connector=YouTubeConnector(transport=PagedTransport()),
+                        account=_account())
+    assert stats["posts"] == 2  # both videos still ingested despite the 403
+    assert stats["comments"] == 0
 
 
 def test_backfill_interactions_maps_comments():

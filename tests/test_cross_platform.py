@@ -131,6 +131,14 @@ def test_sift_and_shift_finds_missing_platform(creator, session):
     assert saved.source_post_ids == [o["source_post_id"]]
     assert saved.brief["target_platform"] == "tiktok"
 
+    # idempotent: re-shifting the same source → same draft, not a duplicate
+    again = draft_shift(session, o["source_post_id"], "tiktok")
+    assert again["draft_id"] == draft["draft_id"] and again.get("reused")
+    n = len(session.scalars(select(ContentDraft).where(
+        ContentDraft.creator_id == creator.id,
+        ContentDraft.demand_topic_id.is_(None))).all())
+    assert n == 1  # only the one migrated draft
+
 
 def test_sift_and_shift_target_is_configurable(creator, session):
     # the same workflow works for any target platform, not just TikTok
