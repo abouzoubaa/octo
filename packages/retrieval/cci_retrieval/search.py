@@ -38,6 +38,7 @@ class PostResult:
     # confidence inputs: best raw cosine similarity + lexical agreement
     vec_sim: float = 0.0
     fts_support: bool = False
+    language: str | None = None
 
 
 def _vector_candidates(session: Session, creator_id: str, query_vec: list[float],
@@ -61,18 +62,19 @@ def _vector_candidates(session: Session, creator_id: str, query_vec: list[float]
 
 def _fulltext_candidates(session: Session, creator_id: str, query: str,
                          limit: int) -> list[ChunkHit]:
+    cfg = get_settings().fts_config  # must match the tsv column's config
     rows = session.execute(
         sql_text(
-            """
+            f"""
             SELECT c.id, c.post_id, c.source, c.text, c.start_ts,
-                   ts_rank(c.tsv, websearch_to_tsquery('english', :q)) AS rank
+                   ts_rank(c.tsv, websearch_to_tsquery('{cfg}', :q)) AS rank
             FROM chunks c
             JOIN posts p ON p.id = c.post_id AND p.status = 'active'
             WHERE c.creator_id = :creator_id
-              AND c.tsv @@ websearch_to_tsquery('english', :q)
+              AND c.tsv @@ websearch_to_tsquery('{cfg}', :q)
             ORDER BY rank DESC
             LIMIT :limit
-            """
+            """  # noqa: S608 — cfg is an operator-set config name, not user input
         ),
         {"q": query, "creator_id": creator_id, "limit": limit},
     ).fetchall()
@@ -151,7 +153,7 @@ def search(session: Session, creator_id: str, query: str,
         return []
     rows = session.execute(
         sql_text(
-            "SELECT id, permalink, caption, type, posted_at FROM posts "
+            "SELECT id, permalink, caption, type, posted_at, language FROM posts "
             "WHERE id = ANY(:ids) AND status = 'active'"
         ),
         {"ids": post_ids},
@@ -175,6 +177,7 @@ def search(session: Session, creator_id: str, query: str,
                 evidence=sorted(hits, key=lambda h: h.score, reverse=True)[:3],
                 vec_sim=vec_sim_by_post.get(post_id, 0.0),
                 fts_support=post_id in fts_posts,
+                language=meta[5],
             )
         )
     results.sort(key=lambda r: r.score, reverse=True)

@@ -135,6 +135,10 @@ def _upsert_post(session: Session, creator: Creator, item: dict) -> Post:
     post.caption = item.get("caption")
     post.permalink = item.get("permalink")
     post.media_url = item.get("media_url") or item.get("thumbnail_url")
+    if post.caption:
+        from cci_core.language import detect_language
+
+        post.language = detect_language(post.caption)
     if item.get("timestamp"):
         post.posted_at = InstagramClient.parse_ts(item["timestamp"])
     session.flush()

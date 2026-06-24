@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     public_rate_limit_per_min: int = 60  # per-IP cap on public endpoints (0 = off)
 
     # --- retrieval / answer tuning ---------------------------------------------
+    # Postgres text-search config for full-text. 'english' (default) stems English;
+    # set 'simple' for multilingual deployments (language-agnostic, no stemming).
+    # Applies to BOTH the generated tsv column (at schema creation) and queries.
+    fts_config: str = "english"
     search_top_k: int = 8
     rerank_candidates: int = 30
     answer_min_confidence: float = 0.45  # below this → "no strong answer"

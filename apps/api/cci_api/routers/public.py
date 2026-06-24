@@ -38,6 +38,7 @@ class ResultOut(BaseModel):
     score: float
     evidence: list[EvidenceOut]
     products: list[dict] = []
+    language: str | None = None
 
 
 class CitationOut(BaseModel):
@@ -145,6 +146,7 @@ def _result_out(db: Session, r) -> ResultOut:
                    "disclosure": ("Affiliate link — the creator may earn a commission."
                                   if p.affiliate_url else None)}
                   for p in product_rows],
+        language=getattr(r, "language", None),
     )
 
 
@@ -229,6 +231,34 @@ def most_asked(creator: Creator = Depends(get_creator),
         question = (t.audience_language[0] if t.audience_language else t.label)
         out.append({"question": question, "label": t.label})
     return out
+
+
+@router.get("/api/{handle}/start-here")
+def start_here(creator: Creator = Depends(get_creator),
+               db: Session = Depends(get_db)) -> dict:
+    """Curated entry paths for a first-time visitor who doesn't know what to type:
+    a couple of popular questions + the strongest topics to browse."""
+    from collections import Counter
+
+    from cci_core.models import DemandTopic, Enrichment, Post
+
+    cards = db.scalars(
+        select(DemandTopic).where(DemandTopic.creator_id == creator.id)
+        .order_by(DemandTopic.opportunity_score.desc().nullslast()).limit(3)).all()
+    paths = [{"label": f"Ask: {(c.audience_language[0] if c.audience_language else c.label)}",
+              "query": (c.audience_language[0] if c.audience_language else c.label)}
+             for c in cards]
+    topic_rows = db.execute(
+        select(Enrichment.topics).join(Post, Post.id == Enrichment.post_id)
+        .where(Post.creator_id == creator.id, Post.status == "active")).all()
+    counts: Counter = Counter()
+    for (topics,) in topic_rows:
+        for t in (topics or []):
+            counts[str(t).strip()] += 1
+    for topic, _ in counts.most_common(3):
+        paths.append({"label": f"Explore: {topic}", "query": topic})
+    return {"paths": paths[:5],
+            "hint": "Or just ask in your own words — I search everything they've posted."}
 
 
 @router.get("/api/{handle}/topics")

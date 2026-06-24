@@ -30,6 +30,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from cci_core.config import get_settings
 from cci_core.crypto import EncryptedString
 
 
@@ -201,9 +202,13 @@ class Chunk(Base):
     text: Mapped[str] = mapped_column(Text)
     start_ts: Mapped[float | None] = mapped_column(Float, nullable=True)  # transcript chunks
     embedding = mapped_column(Vector(), nullable=True)  # dims recorded per row
-    # generated full-text column — the lexical half of hybrid retrieval
+    # generated full-text column — the lexical half of hybrid retrieval. The text
+    # search config is deploy-configurable (CCI_FTS_CONFIG): 'english' stems English,
+    # 'simple' is language-agnostic for multilingual corpora.
     tsv = mapped_column(
-        TSVECTOR, Computed("to_tsvector('english', text)", persisted=True), nullable=True
+        TSVECTOR,
+        Computed(f"to_tsvector('{get_settings().fts_config}', text)", persisted=True),
+        nullable=True,
     )
     embed_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
     embed_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
