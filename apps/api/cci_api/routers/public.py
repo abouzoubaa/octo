@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cci_api.deps import get_creator
+from cci_api.observability import rate_limit
 from cci_core import events
 from cci_core.db import get_db
 from cci_core.models import (
@@ -61,7 +62,8 @@ class SearchResponse(BaseModel):
     deep_link: str
 
 
-@router.get("/api/{handle}/search", response_model=SearchResponse)
+@router.get("/api/{handle}/search", response_model=SearchResponse,
+            dependencies=[Depends(rate_limit)])
 def search_endpoint(
     q: str = QueryParam(..., min_length=1, max_length=500),
     with_answer: bool = QueryParam(default=True),
@@ -159,7 +161,7 @@ class WaitlistIn(BaseModel):
     topic: str = Field(min_length=1, max_length=500)
 
 
-@router.post("/api/{handle}/waitlist")
+@router.post("/api/{handle}/waitlist", dependencies=[Depends(rate_limit)])
 def join_waitlist(body: WaitlistIn, creator: Creator = Depends(get_creator),
                   db: Session = Depends(get_db)) -> dict:
     """No-answer waitlist: 'want a heads-up when @creator covers this?' — captures

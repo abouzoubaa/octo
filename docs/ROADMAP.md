@@ -21,11 +21,19 @@ want, and helps you build it."**
 > Release (Axis B): v1.5 · v2 · v3
 
 > **Build status (Axis B — agent features):** the entire agent feature layer
-> (foundations + v1.5 + v2 + v3) is now **implemented** in `packages/agent`
+> (foundations + v1.5 + v2 + v3) is **implemented** in `packages/agent`
 > (`cci_agent`) and the `/agent` + `/v1/public` APIs, with a creator dashboard
-> (`apps/web/src/routes/studio`). 101 backend tests green, eval gate passing.
-> Deliberately deferred (need multi-creator scale): brand partnership portal,
-> creator marketplace. Axis A (production-grade plumbing) is the remaining work.
+> (`apps/web/src/routes/studio`). Deferred (need multi-creator scale): brand
+> partnership portal, creator marketplace.
+>
+> **Build status (Axis A — production):** P0 plumbing is largely **implemented** —
+> Alembic migrations, at-rest token encryption + secret guards, Instagram OAuth
+> onboarding + token refresh, Stripe-ready billing with plan gating + quotas,
+> GDPR export/erasure + PII redaction + privacy/ToS, and ops (request-id
+> middleware, `/metrics`, per-IP rate limiting, RQ retries/dead-letter, CI
+> workflow, backup script). Remaining: real cloud deploy + managed Postgres,
+> Sentry/uptime wiring, reranking model, frontend/load tests. **142 backend
+> tests green, eval gate passing (`--gate`).**
 
 ---
 

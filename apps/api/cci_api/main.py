@@ -1,21 +1,29 @@
 """FastAPI application factory + entrypoint."""
 from __future__ import annotations
 
-import logging
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 
+from cci_api.observability import (
+    RequestContextMiddleware,
+    configure_logging,
+    init_sentry,
+    render_metrics,
+)
 from cci_api.routers import admin, agent, billing, oauth, public, public_api, webhooks
 from cci_core.config import get_settings
 
 
 def create_app() -> FastAPI:
+    configure_logging()
+    init_sentry()
     app = FastAPI(
         title="Creator Content Intelligence",
         version="0.1.0",
         description="Search-first archive · grounded answers · Demand Radar",
     )
+    app.add_middleware(RequestContextMiddleware)
     # the fan-facing web app is a separate origin (Qwik) — allow it
     app.add_middleware(
         CORSMiddleware,
@@ -36,6 +44,10 @@ def create_app() -> FastAPI:
     def healthz() -> dict:
         return {"ok": True}
 
+    @app.get("/metrics", tags=["ops"], response_class=PlainTextResponse)
+    def metrics() -> str:
+        return render_metrics()
+
     return app
 
 
@@ -45,7 +57,6 @@ app = create_app()
 def run() -> None:
     import uvicorn
 
-    logging.basicConfig(level=logging.INFO)
     s = get_settings()
     uvicorn.run("cci_api.main:app", host=s.api_host, port=s.api_port)
 

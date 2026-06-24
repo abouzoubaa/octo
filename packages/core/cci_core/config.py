@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     ig_webhook_verify_token: str = "change-me-too"
     yt_api_key: str = ""
 
+    # --- observability & limits -------------------------------------------------
+    sentry_dsn: str = ""  # error tracking (optional)
+    log_json: bool = False  # structured JSON logs in production
+    public_rate_limit_per_min: int = 60  # per-IP cap on public endpoints (0 = off)
+
     # --- retrieval / answer tuning ---------------------------------------------
     search_top_k: int = 8
     rerank_candidates: int = 30
