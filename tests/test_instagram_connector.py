@@ -60,6 +60,14 @@ def test_backfill_interactions_maps_comments():
     assert its[0].author_external_id == "fan-1"
 
 
+def test_ts_tolerates_garbage_values():
+    # non-string / malformed timestamps must not abort a backfill
+    assert InstagramConnector._ts(12345) is None
+    assert InstagramConnector._ts(None) is None
+    assert InstagramConnector._ts("not-a-date") is None
+    assert InstagramConnector._ts("2026-06-01T10:00:00+0000") is not None
+
+
 def test_reply_requires_capability():
     class NoReply(InstagramConnector):
         def capabilities(self):

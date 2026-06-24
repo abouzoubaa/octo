@@ -38,6 +38,11 @@ def _default_client_factory(token: str):
 class InstagramConnector(Connector):
     platform = "instagram"
 
+    # backstops against an unbounded cursor walk if the API misbehaves (mirrors the
+    # YouTube connector's page caps); upserts dedupe by external_id regardless.
+    _MAX_MEDIA = 5000
+    _MAX_COMMENTS = 5000
+
     def __init__(self, client_factory: Any | None = None):
         self._make_client = client_factory or _default_client_factory
 
@@ -65,7 +70,7 @@ class InstagramConnector(Connector):
 
         try:
             return InstagramClient.parse_ts(value)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AttributeError):  # tolerate non-string/garbage
             return None
 
     @classmethod
@@ -93,7 +98,12 @@ class InstagramConnector(Connector):
 
     def backfill_content(self, account) -> list[NormalizedContent]:
         client = self._client(account)
-        return [self._map_media(m) for m in client.iter_media(account.external_account_id)]
+        out: list[NormalizedContent] = []
+        for m in client.iter_media(account.external_account_id):
+            out.append(self._map_media(m))
+            if len(out) >= self._MAX_MEDIA:
+                break
+        return out
 
     def sync_content(self, account, cursor: str | None = None):
         page = self._client(account).media_page(account.external_account_id, after=cursor)
@@ -103,8 +113,12 @@ class InstagramConnector(Connector):
 
     def backfill_interactions(self, account, content_external_id: str):
         client = self._client(account)
-        return [self._map_comment(c, content_external_id)
-                for c, _cursor in client.iter_comments(content_external_id)]
+        out: list[NormalizedInteraction] = []
+        for c, _cursor in client.iter_comments(content_external_id):
+            out.append(self._map_comment(c, content_external_id))
+            if len(out) >= self._MAX_COMMENTS:
+                break
+        return out
 
     # ---- actions ---------------------------------------------------------------
 
