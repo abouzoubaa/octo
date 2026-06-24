@@ -696,6 +696,31 @@ class ApiKey(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class Plan(str, enum.Enum):
+    free = "free"  # public audience search page only
+    creator = "creator"  # Radar digest, answer card, affiliate, briefing
+    pro = "pro"  # + comment-to-DM automation, drafting, sponsor reports, multi-platform
+
+
+class Subscription(Base):
+    """Creator subscription (plan §13 pricing). One per creator; plan drives feature
+    gating + quotas (see cci_core.billing)."""
+
+    __tablename__ = "subscriptions"
+
+    creator_id: Mapped[str] = mapped_column(
+        ForeignKey("creators.id", ondelete="CASCADE"), primary_key=True
+    )
+    plan: Mapped[Plan] = mapped_column(Enum(Plan, native_enum=False), default=Plan.free)
+    status: Mapped[str] = mapped_column(String(24), default="active")  # active|past_due|canceled
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    current_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class AuditLog(Base):
     """Audit trail for team actions (v3) — who did what, for accountability."""
 

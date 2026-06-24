@@ -181,12 +181,21 @@ def list_outcomes(creator_id: str, stage: str | None = None, limit: int = 50,
 def make_draft(topic_id: str, db: Session = Depends(get_db)) -> dict:
     """Generate a grounded content brief + reel script/hooks from a demand cluster."""
     from cci_agent.drafting import generate_draft
+    from cci_core import events
     from cci_core.agent_foundations import DemandState, transition_demand
+    from cci_core.billing import PlanError, assert_feature, check_quota
 
     topic = db.get(DemandTopic, topic_id)
     if topic is None:
         raise HTTPException(status_code=404, detail="demand topic not found")
+    # plan gating: drafting is a Pro feature, metered against the monthly quota
+    try:
+        assert_feature(db, topic.creator_id, "draft_generator")
+        check_quota(db, topic.creator_id, "drafts")
+    except PlanError as exc:
+        raise HTTPException(status_code=402, detail={"error": str(exc), "code": exc.code})
     draft = generate_draft(db, topic.creator_id, topic, persist=True)
+    events.track(db, "drafts", topic.creator_id, draft_id=draft.id)
     # advance the lifecycle if the creator is acting on it
     if topic.state in (DemandState.new, DemandState.idea):
         try:
@@ -442,7 +451,12 @@ def series(topic_id: str, db: Session = Depends(get_db)) -> dict:
 def sponsor_report_endpoint(creator_id: str, topic: str | None = None,
                             db: Session = Depends(get_db)) -> dict:
     from cci_agent.revenue import sponsor_report
+    from cci_core.billing import PlanError, assert_feature
 
+    try:
+        assert_feature(db, creator_id, "sponsor_reports")  # Pro feature
+    except PlanError as exc:
+        raise HTTPException(status_code=402, detail={"error": str(exc), "code": exc.code})
     return sponsor_report(db, creator_id, topic)
 
 

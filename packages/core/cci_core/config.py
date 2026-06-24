@@ -61,6 +61,12 @@ class Settings(BaseSettings):
 
     ocr_provider: str = "fake"  # fake | paddleocr
 
+    # --- billing ----------------------------------------------------------------
+    billing_provider: str = "fake"  # fake | stripe
+    stripe_api_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_ids: dict = {}  # {"creator": "price_...", "pro": "price_..."}
+
     # --- platform APIs ----------------------------------------------------------
     ig_app_id: str = ""
     ig_app_secret: str = ""
