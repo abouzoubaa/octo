@@ -141,7 +141,10 @@ def _result_out(db: Session, r) -> ResultOut:
         post_type=r.post_type, posted_at=r.posted_at, score=round(r.score, 5),
         evidence=[EvidenceOut(source=h.source, text=h.text[:300], start_ts=h.start_ts)
                   for h in r.evidence],
-        products=[{"id": p.id, "name": p.name} for p in product_rows],
+        products=[{"id": p.id, "name": p.name, "is_affiliate": bool(p.affiliate_url),
+                   "disclosure": ("Affiliate link — the creator may earn a commission."
+                                  if p.affiliate_url else None)}
+                  for p in product_rows],
     )
 
 

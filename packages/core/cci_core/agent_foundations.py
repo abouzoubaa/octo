@@ -153,22 +153,31 @@ def active_offers(session: Session, creator_id: str, now: datetime | None = None
     return live
 
 
-def best_offer_for_topics(session: Session, creator_id: str,
-                          topics: list[str]) -> Offer | None:
-    """Route to the best current offer for a set of topics (offer-aware CTAs).
-
-    Match on topic overlap; fall back to the highest-priority active offer.
-    """
+def select_offer(session: Session, creator_id: str,
+                 topics: list[str]) -> tuple[Offer | None, dict]:
+    """Pick the best current offer AND record WHY it was selected (trust firewall):
+    a topic match (with the overlapping topics) or a priority fallback. The reason is
+    auditable — a creator/regulator can see the offer wasn't chosen for commission."""
     offers = active_offers(session, creator_id)
     if not offers:
-        return None
+        return None, {"basis": "none"}
     want = {t.lower() for t in topics or []}
-    best, best_overlap = None, 0
+    best, best_overlap, matched = None, 0, []
     for o in offers:
-        overlap = len(want & {t.lower() for t in (o.topics or [])})
-        if overlap > best_overlap:
-            best, best_overlap = o, overlap
-    return best or offers[0]
+        otopics = {t.lower() for t in (o.topics or [])}
+        overlap = want & otopics
+        if len(overlap) > best_overlap:
+            best, best_overlap, matched = o, len(overlap), sorted(overlap)
+    if best is not None:
+        return best, {"basis": "topic_match", "matched_topics": matched, "overlap": best_overlap}
+    return offers[0], {"basis": "priority_fallback",
+                       "note": "no topic match; highest-priority active offer"}
+
+
+def best_offer_for_topics(session: Session, creator_id: str,
+                          topics: list[str]) -> Offer | None:
+    """Back-compat wrapper around select_offer (returns just the offer)."""
+    return select_offer(session, creator_id, topics)[0]
 
 
 def get_rules(session: Session, creator_id: str) -> CreatorRules:
