@@ -175,12 +175,96 @@ class WaitlistIn(BaseModel):
 @router.post("/api/{handle}/waitlist", dependencies=[Depends(rate_limit)])
 def join_waitlist(body: WaitlistIn, creator: Creator = Depends(get_creator),
                   db: Session = Depends(get_db)) -> dict:
-    """No-answer waitlist: 'want a heads-up when @creator covers this?' — captures
-    a lead on a weak result and feeds the demand/gap map."""
+    """No-answer waitlist / demand cohort: 'want a heads-up when @creator covers
+    this?' — captures a lead, feeds the gap map, and returns the cohort size so the
+    fan sees 'N people want this' (a non-payment demand contract)."""
     from cci_agent.inbox import add_to_waitlist
 
-    add_to_waitlist(db, creator.id, body.email.strip(), body.topic.strip())
-    events.track(db, "waitlist_join", creator.id, topic=body.topic)
+    topic = body.topic.strip()
+    add_to_waitlist(db, creator.id, body.email.strip(), topic)
+    events.track(db, "waitlist_join", creator.id, topic=topic)
+    # cohort size: how many distinct people are waiting on a similar topic
+    from cci_core.models import WaitlistEntry
+
+    words = {w for w in topic.lower().split() if len(w) > 3}
+    cohort = {e for e, t in db.execute(select(WaitlistEntry.email, WaitlistEntry.topic).where(
+        WaitlistEntry.creator_id == creator.id, WaitlistEntry.notified.is_(False)))
+        if words & {w for w in (t or "").lower().split() if len(w) > 3}}
+    return {"ok": True, "cohort_size": max(len(cohort), 1)}
+
+
+@router.get("/api/{handle}/cohorts")
+def open_cohorts(creator: Creator = Depends(get_creator),
+                 db: Session = Depends(get_db)) -> list[dict]:
+    """Open demand cohorts: topics fans are waiting on, with counts ('137 want this')."""
+    from cci_core.models import WaitlistEntry
+
+    rows = db.scalars(select(WaitlistEntry).where(
+        WaitlistEntry.creator_id == creator.id, WaitlistEntry.notified.is_(False))).all()
+    by_topic: dict[str, set] = {}
+    for r in rows:
+        by_topic.setdefault(r.topic.strip().lower(), set()).add(r.email)
+    cohorts = [{"topic": t, "people_waiting": len(emails)} for t, emails in by_topic.items()]
+    cohorts.sort(key=lambda c: c["people_waiting"], reverse=True)
+    return cohorts[:50]
+
+
+@router.get("/api/{handle}/popular")
+def most_asked(creator: Creator = Depends(get_creator),
+               db: Session = Depends(get_db)) -> list[dict]:
+    """Most-asked questions — so a fan who doesn't know what to type has a starting
+    point instead of a blank box."""
+    from cci_core.models import DemandTopic
+
+    rows = db.scalars(
+        select(DemandTopic).where(DemandTopic.creator_id == creator.id)
+        .order_by(DemandTopic.opportunity_score.desc().nullslast(),
+                  (DemandTopic.search_count + DemandTopic.comment_count).desc())
+        .limit(8)).all()
+    out = []
+    for t in rows:
+        question = (t.audience_language[0] if t.audience_language else t.label)
+        out.append({"question": question, "label": t.label})
+    return out
+
+
+@router.get("/api/{handle}/topics")
+def browse_topics(creator: Creator = Depends(get_creator),
+                  db: Session = Depends(get_db)) -> list[dict]:
+    """Topic browsing — the archive's subjects, for fans who'd rather explore."""
+    from collections import Counter
+
+    from cci_core.models import Enrichment, Post
+
+    rows = db.execute(
+        select(Enrichment.topics).join(Post, Post.id == Enrichment.post_id)
+        .where(Post.creator_id == creator.id, Post.status == "active")).all()
+    counts: Counter = Counter()
+    for (topics,) in rows:
+        for t in (topics or []):
+            counts[str(t).strip().lower()] += 1
+    return [{"topic": t, "posts": n} for t, n in counts.most_common(30)]
+
+
+class FeedbackIn(BaseModel):
+    answer_id: str
+    helpful: bool
+
+
+@router.post("/api/{handle}/feedback", dependencies=[Depends(rate_limit)])
+def answer_feedback(body: FeedbackIn, creator: Creator = Depends(get_creator),
+                    db: Session = Depends(get_db)) -> dict:
+    """Outcome Memory: 'did this help?' — closes the outcome edge with the result,
+    so Sift learns which answers actually work (not just what was asked)."""
+    from cci_core.models import Outcome
+
+    outcome = db.scalar(select(Outcome).where(
+        Outcome.creator_id == creator.id, Outcome.answer_id == body.answer_id))
+    if outcome is not None:
+        outcome.stage = "resolved" if body.helpful else "unresolved"
+        outcome.result = {**(outcome.result or {}), "helpful": body.helpful}
+    events.track(db, "answer_feedback", creator.id, answer_id=body.answer_id,
+                 helpful=body.helpful)
     return {"ok": True}
 
 
