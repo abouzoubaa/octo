@@ -48,6 +48,18 @@ export const useDraft = routeAction$(async (data) => {
   return { ok: res !== null, draftId: res?.draft_id };
 });
 
+// Propose a multi-part series arc for a recurring-demand topic
+export const useSeries = routeAction$(async (data) => {
+  const res = await adminPost<{
+    topic_id: string;
+    parts: string[];
+    faq_post: string;
+    dm_followup: string;
+    offer_tie_in: string;
+  }>(`/agent/demand/${data.topicId}/series`);
+  return res ?? null;
+});
+
 // the next lifecycle step + the action verb a creator actually thinks in
 const NEXT_STATE: Record<string, { to: string; verb: string } | null> = {
   new: { to: "idea", verb: "✓ Make this" },
@@ -62,6 +74,7 @@ export default component$(() => {
   const o = useOverview();
   const transition = useTransition();
   const draft = useDraft();
+  const series = useSeries();
   const m = (o.value.metrics ?? {}) as any;
 
   return (
@@ -161,6 +174,12 @@ export default component$(() => {
                 ✍️ Draft
               </button>
             </Form>
+            <Form action={series}>
+              <input type="hidden" name="topicId" value={c.id} />
+              <button class="pill-btn ghost" type="submit">
+                🎬 Series
+              </button>
+            </Form>
             {c.state !== "dismissed" && (
               <Form action={transition}>
                 <input type="hidden" name="topicId" value={c.id} />
@@ -171,6 +190,28 @@ export default component$(() => {
               </Form>
             )}
           </div>
+          {series.value?.topic_id === c.id && (
+            <div class="series-arc">
+              <div class="label">
+                <span class="dot" />
+                Series arc
+              </div>
+              <ol class="series-parts">
+                {series.value.parts.map((p, i) => (
+                  <li key={i}>{p}</li>
+                ))}
+              </ol>
+              {series.value.faq_post && (
+                <p class="evidence">❓ FAQ post: {series.value.faq_post}</p>
+              )}
+              {series.value.dm_followup && (
+                <p class="evidence">📨 DM follow-up: {series.value.dm_followup}</p>
+              )}
+              {series.value.offer_tie_in && (
+                <p class="evidence">🎯 Offer tie-in: {series.value.offer_tie_in}</p>
+              )}
+            </div>
+          )}
         </div>
       ))}
     </>

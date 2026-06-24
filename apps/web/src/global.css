@@ -350,6 +350,30 @@ body {
 
 .actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
 .actions form { margin: 0; }
+
+/* Series arc panel — the multi-part plan proposed for a recurring-demand topic */
+.series-arc {
+  margin-top: 12px; padding: 13px 15px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--hairline);
+}
+.series-arc .label {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11px; font-weight: 800;
+  letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 8px;
+}
+.series-arc .label .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+}
+.series-parts {
+  margin: 0 0 8px; padding-left: 20px;
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 14px; font-weight: 500; color: var(--ink-strong);
+}
+.series-arc .evidence { margin: 3px 0; }
 .pill-btn {
   background: linear-gradient(160deg, var(--accent-2) 0%, var(--accent) 90%);
   color: var(--accent-ink); border: 0;
