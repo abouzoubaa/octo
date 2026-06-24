@@ -1,0 +1,50 @@
+# TLS ingress. The fan-facing web app is the default backend; the API is exposed
+# under /api, /oauth, /webhooks, /admin, /agent, /billing, /v1, /healthz, /metrics.
+# Adjust host + the ingress class / cert-manager annotations for your cluster.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sift
+  namespace: sift
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["yourapp.example"]
+      secretName: sift-tls
+  rules:
+    - host: yourapp.example
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend: { service: { name: sift-api, port: { number: 80 } } }
+          - path: /oauth
+            pathType: Prefix
+            backend: { service: { name: sift-api, port: { number: 80 } } }
+          - path: /webhooks
+            pathType: Prefix
+            backend: { service: { name: sift-api, port: { number: 80 } } }
+          - path: /billing
+            pathType: Prefix
+            backend: { service: { name: sift-api, port: { number: 80 } } }
+          - path: /admin
+            pathType: Prefix
+            backend: { service: { name: sift-api, port: { number: 80 } } }
+          - path: /agent
+            pathType: Prefix
+            backend: { service: { name: sift-api, port: { number: 80 } } }
+          - path: /v1
+            pathType: Prefix
+            backend: { service: { name: sift-api, port: { number: 80 } } }
+          - path: /healthz
+            pathType: Exact
+            backend: { service: { name: sift-api, port: { number: 80 } } }
+          - path: /metrics
+            pathType: Exact
+            backend: { service: { name: sift-api, port: { number: 80 } } }
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: sift-web, port: { number: 80 } } }

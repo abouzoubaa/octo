@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sift-web
+  namespace: sift
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: sift-web }
+  template:
+    metadata:
+      labels: { app: sift-web }
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/yourorg/sift-web:latest
+          ports: [{ containerPort: 3000 }]
+          env:
+            # the fan-facing app calls the API server-side; admin token stays server-only
+            - { name: PUBLIC_API_BASE, value: "http://sift-api.sift.svc.cluster.local" }
+            - name: ADMIN_API_TOKEN
+              valueFrom:
+                secretKeyRef: { name: sift-secrets, key: CCI_ADMIN_TOKEN }
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sift-web
+  namespace: sift
+spec:
+  selector: { app: sift-web }
+  ports: [{ port: 80, targetPort: 3000 }]
