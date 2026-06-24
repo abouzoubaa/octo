@@ -43,6 +43,14 @@ PLAN_QUOTAS: dict[Plan, dict[str, int | None]] = {
     Plan.pro: {"drafts": None, "dm_sent": None},
 }
 
+# Per-plan monthly AI-cost ceiling in cents (None = unlimited). A backstop against
+# runaway spend; checked before creator-side expensive operations.
+PLAN_COST_CAP_CENTS: dict[Plan, float | None] = {
+    Plan.free: 0.0,
+    Plan.creator: 2000.0,   # $20/mo of AI spend
+    Plan.pro: None,         # unlimited (fair-use)
+}
+
 
 class PlanError(Exception):
     """Raised when a creator's plan doesn't permit an action."""
@@ -111,6 +119,18 @@ def check_quota(session: Session, creator_id: str, metric: str) -> None:
     if usage_this_month(session, creator_id, metric) >= quota:
         raise PlanError(f"monthly '{metric}' quota ({quota}) reached — upgrade for more",
                         code="quota_exceeded")
+
+
+def check_cost_budget(session: Session, creator_id: str) -> None:
+    """Raise PlanError if the creator is over their monthly AI-cost ceiling."""
+    cap = PLAN_COST_CAP_CENTS.get(plan_for(session, creator_id))
+    if cap is None:
+        return  # unlimited
+    from cci_core.cost import monthly_cost_cents
+
+    if monthly_cost_cents(session, creator_id) >= cap:
+        raise PlanError(f"monthly AI-cost cap (${cap / 100:.0f}) reached — upgrade for more",
+                        code="cost_cap_exceeded")
 
 
 def apply_subscription_event(session: Session, creator_id: str, *, plan: Plan,

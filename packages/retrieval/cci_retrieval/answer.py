@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from cci_core.config import get_settings
 from cci_core.models import Answer, AnswerState
+from cci_core.safety import GUARD, neutralize, wrap_untrusted
 from cci_providers import get_llm
 from cci_retrieval.search import PostResult, retrieval_confidence, search
 
@@ -25,8 +26,8 @@ Rules — non-negotiable:
 2. Every sentence must be supported by at least one passage; cite it as [n].
 3. If the passages do not clearly answer the question, respond with exactly: NO_ANSWER
 4. Maximum 4 sentences. No greetings, no filler, no opinions of your own.
-Return JSON: {"answer": "...", "citations": [n, ...]} or {"answer": "NO_ANSWER"}.\
-"""
+Return JSON: {"answer": "...", "citations": [n, ...]} or {"answer": "NO_ANSWER"}.
+""" + GUARD
 
 
 @dataclass
@@ -56,10 +57,16 @@ def generate_answer(session: Session, creator_id: str, question: str) -> AnswerC
             passages.append((n, result, hit.chunk_id, hit.text))
             n += 1
 
-    context = "\n".join(f"[{i}] {text}" for i, _, _, text in passages)
-    user_msg = f"Question: {question}\n\nContext passages:\n{context}"
+    # the audience question is the highest-risk injection vector → fully delimited.
+    # passages are defanged inline (markers neutralised) but keep the [n] format so
+    # citation parsing still works.
+    context = "\n".join(f"[{i}] {neutralize(text)}" for i, _, _, text in passages)
+    user_msg = f"Question: {wrap_untrusted(question)}\n\nContext passages:\n{context}"
 
     raw = get_llm().complete(SYSTEM_PROMPT, user_msg, json_output=True, max_tokens=500)
+    from cci_core.cost import meter_llm
+
+    meter_llm(session, creator_id, user_msg, raw, op="answer")
     text, cited_ns = _parse_llm_answer(raw)
 
     if text is None:

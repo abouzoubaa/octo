@@ -45,3 +45,39 @@ def demand(week: str | None = None, key: ApiKey = Depends(require_api_key),
     return [{"label": t.label, "searches": t.search_count, "comments": t.comment_count,
              "wow_change": t.wow_change, "state": t.state.value,
              "coverage_gap": (t.coverage or {}).get("gap")} for t in rows]
+
+
+@router.get("/answer")
+def canonical_answer(q: str, key: ApiKey = Depends(require_api_key),
+                     db: Session = Depends(get_db)) -> dict:
+    """Creator-authorized knowledge endpoint (scope: answer:read).
+
+    A grounded, cited answer from the creator's archive — for external assistants,
+    sites, and tools to use the creator as their authorized knowledge layer. Returns
+    the answer, exact citations, the relevant current offer, and a canonical URL.
+    Same grounding guarantees as the fan page: low confidence → no answer, not a guess.
+    """
+    _scoped(key, "answer:read")
+    from cci_agent.monetization import offer_cta
+    from cci_core.deep_links import answer_link, search_link
+    from cci_core.models import Creator
+    from cci_retrieval.answer import generate_answer, persist_answer
+
+    creator = db.get(Creator, key.creator_id)
+    if creator is None:
+        raise HTTPException(status_code=404, detail="creator not found")
+
+    card = generate_answer(db, creator.id, q)
+    if card.state != "answered":
+        return {"state": "no_answer", "canonical_url": search_link(creator.handle, q),
+                "note": "no strong answer in the creator's archive"}
+    answer = persist_answer(db, creator.id, card)
+    topics = [c.get("topic") for c in card.citations if c.get("topic")]
+    return {
+        "state": "answered",
+        "answer": card.text,
+        "citations": card.citations,
+        "offer": offer_cta(db, creator.id, topics or [q]),
+        "canonical_url": answer_link(creator.handle, q, answer.id),
+        "confidence": round(card.confidence, 3),
+    }

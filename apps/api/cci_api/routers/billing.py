@@ -31,6 +31,9 @@ admin_router = APIRouter(prefix="/billing", tags=["billing"],
 
 @admin_router.get("/creators/{creator_id}/subscription")
 def subscription(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_core.billing import PLAN_COST_CAP_CENTS
+    from cci_core.cost import monthly_cost_cents
+
     sub = get_subscription(db, creator_id)
     quotas = PLAN_QUOTAS.get(sub.plan, {})
     return {
@@ -38,6 +41,8 @@ def subscription(creator_id: str, db: Session = Depends(get_db)) -> dict:
         "current_period_end": sub.current_period_end.isoformat() if sub.current_period_end else None,
         "usage": {m: {"used": usage_this_month(db, creator_id, m), "quota": q}
                   for m, q in quotas.items()},
+        "ai_cost": {"used_cents": monthly_cost_cents(db, creator_id),
+                    "cap_cents": PLAN_COST_CAP_CENTS.get(sub.plan)},
     }
 
 

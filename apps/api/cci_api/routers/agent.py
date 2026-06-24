@@ -69,6 +69,18 @@ def opportunity(topic_id: str, db: Session = Depends(get_db)) -> dict:
     return score_topic(db, topic)
 
 
+@router.get("/demand/{topic_id}/certificate")
+def demand_certificate_endpoint(topic_id: str, db: Session = Depends(get_db)) -> dict:
+    """Privacy-preserving Demand Certificate — the unit a brand could compare,
+    with no raw audience identities or quotes."""
+    from cci_agent.demand import demand_certificate
+
+    topic = db.get(DemandTopic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail="demand topic not found")
+    return demand_certificate(db, topic)
+
+
 @router.get("/creators/{creator_id}/demand/pipeline")
 def demand_pipeline(creator_id: str, db: Session = Depends(get_db)) -> dict:
     """Demand items grouped by lifecycle state — the production board."""
@@ -241,10 +253,14 @@ def make_draft(topic_id: str, db: Session = Depends(get_db)) -> dict:
     topic = db.get(DemandTopic, topic_id)
     if topic is None:
         raise HTTPException(status_code=404, detail="demand topic not found")
-    # plan gating: drafting is a Pro feature, metered against the monthly quota
+    # plan gating: drafting is a Pro feature, metered against the monthly quota +
+    # the AI-cost ceiling (runaway-spend backstop)
+    from cci_core.billing import check_cost_budget
+
     try:
         assert_feature(db, topic.creator_id, "draft_generator")
         check_quota(db, topic.creator_id, "drafts")
+        check_cost_budget(db, topic.creator_id)
     except PlanError as exc:
         raise HTTPException(status_code=402, detail={"error": str(exc), "code": exc.code})
     draft = generate_draft(db, topic.creator_id, topic, persist=True)

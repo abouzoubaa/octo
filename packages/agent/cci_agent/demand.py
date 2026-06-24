@@ -168,3 +168,38 @@ def closed_loops(session: Session, creator_id: str, *, weeks: int = 8) -> dict:
         "closed_loops_per_week": round(closed / weeks, 2),
         "in_flight_loops": in_flight,
     }
+
+
+# ------------------------------------------------------------- demand certificate
+
+
+def demand_certificate(session: Session, topic: DemandTopic) -> dict:
+    """A privacy-preserving certificate of demand for a topic — the standard unit a
+    brand could compare, WITHOUT seeing raw audience identities or quotes.
+
+    Carries integrity metrics + the opportunity components + a confidence band that
+    widens with thin/CTA-prompted data. No verbatims, no pseudonyms, no PII.
+    """
+    total = topic.search_count + topic.comment_count
+    prompted_share = (topic.prompted_count / total) if total else 0.0
+    # confidence falls with low volume, short persistence, and high prompted share
+    confidence = (
+        min(topic.unique_askers / 20.0, 1.0) * 0.4
+        + min(topic.persistence_weeks / 4.0, 1.0) * 0.3
+        + (1.0 - prompted_share) * 0.3
+    )
+    return {
+        "topic": topic.label,
+        "week": topic.week,
+        "unique_askers": topic.unique_askers,
+        "total_signals": total,
+        "organic_share": round(1.0 - prompted_share, 3),
+        "persistence_weeks": topic.persistence_weeks,
+        "velocity_wow_pct": topic.wow_change,
+        "intent_class": topic.intent_class,
+        "dominant_sentiment": topic.dominant_sentiment,
+        "coverage_gap": bool((topic.coverage or {}).get("gap")),
+        "opportunity_score": topic.opportunity_score,
+        "confidence": round(confidence, 3),
+        "issued_for": "brand comparison — aggregate, pseudonymous, no audience identities",
+    }
