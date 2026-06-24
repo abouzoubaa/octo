@@ -121,6 +121,20 @@ def instagram_callback(code: str = Query(default=""), state: str = Query(default
     token.expires_at = expires_at
     token.scopes = "instagram_business_basic,_manage_comments,_manage_messages"
 
+    # record the first-class platform account with its connector capabilities
+    from cci_core.connectors import capabilities_for
+    from cci_core.models import PlatformAccount
+
+    account = db.scalar(select(PlatformAccount).where(
+        PlatformAccount.creator_id == creator.id, PlatformAccount.platform == "instagram"))
+    if account is None:
+        account = PlatformAccount(creator_id=creator.id, platform="instagram")
+        db.add(account)
+    account.external_account_id = str(profile["id"])
+    account.username = profile.get("username")
+    account.capabilities = sorted(capabilities_for("instagram"))
+    account.status = "connected"
+
     # kick off the first backfill so the archive starts filling immediately
     try:
         from cci_workers.queue import INGEST, get_queue

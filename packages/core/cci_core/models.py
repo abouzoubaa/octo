@@ -72,6 +72,41 @@ class Creator(Base):
     posts: Mapped[list[Post]] = relationship(back_populates="creator")
 
 
+class PlatformAccount(Base):
+    """A creator's connected account on one platform — first-class, with the
+    capabilities its connector advertises and an ingest mode. Formalises what was
+    implicit (Creator.ig_user_id + OAuthToken) so a creator can connect many
+    platforms, each with its own capability profile (e.g. TikTok archive-only)."""
+
+    __tablename__ = "platform_accounts"
+    __table_args__ = (UniqueConstraint("creator_id", "platform"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    platform: Mapped[str] = mapped_column(String(24))
+    external_account_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    username: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    capabilities: Mapped[list | None] = mapped_column(JSON, nullable=True)  # cached from connector
+    mode: Mapped[str] = mapped_column(String(16), default="native")  # native|import|forward
+    status: Mapped[str] = mapped_column(String(16), default="connected")  # connected|archive_only|needs_reauth
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CanonicalContent(Base):
+    """A Canonical Answer Object: one idea the creator has expressed, possibly as many
+    platform variants (a YouTube video + 3 TikToks + a Reel + a newsletter). Lets Sift
+    treat repurposed posts as variants of ONE answer instead of counting them five times."""
+
+    __tablename__ = "canonical_content"
+    __table_args__ = (Index("ix_canonical_creator", "creator_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(256))
+    topic: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class OAuthToken(Base):
     __tablename__ = "oauth_tokens"
     __table_args__ = (UniqueConstraint("creator_id", "platform"),)
@@ -116,6 +151,10 @@ class Post(Base):
     )
     language: Mapped[str | None] = mapped_column(String(8), nullable=True)  # detected ISO code
     impressions: Mapped[int | None] = mapped_column(Integer, nullable=True)  # from IG insights (optional)
+    # canonical-answer grouping: which Canonical Answer Object this post is a variant of
+    canonical_id: Mapped[str | None] = mapped_column(
+        ForeignKey("canonical_content.id", ondelete="SET NULL"), nullable=True
+    )
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     # per-post comment-sync watermark (comment reads are cursor-paginated, no time filter)
     comment_sync_cursor: Mapped[str | None] = mapped_column(Text, nullable=True)

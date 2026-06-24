@@ -413,6 +413,25 @@ def detect_contradictions_endpoint(creator_id: str, db: Session = Depends(get_db
     return {"superseded": detect_contradictions(db, creator_id)}
 
 
+# ------------------------------------------------- canonical answer objects (variants)
+
+
+@router.post("/creators/{creator_id}/canonical/group")
+def group_canonical(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    """Cluster repurposed posts into Canonical Answer Objects so variants aren't
+    counted as separate answers."""
+    from cci_agent.canonical import group_variants
+
+    return {"canonical_objects": group_variants(db, creator_id)}
+
+
+@router.get("/creators/{creator_id}/canonical")
+def list_canonical(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    from cci_agent.canonical import canonical_summary
+
+    return canonical_summary(db, creator_id)
+
+
 # ------------------------------------------------------------- briefing + gap map
 
 
