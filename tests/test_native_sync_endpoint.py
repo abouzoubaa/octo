@@ -65,6 +65,27 @@ def test_sync_native_dispatches_when_connected(client, creator, session, monkeyp
     assert args == (creator.id, "youtube")
 
 
+def test_sync_all_dispatches_authorized_native_accounts(client, creator, session, monkeypatch):
+    import cci_workers.queue as q
+
+    # two native accounts (youtube authorized, tiktok authorized), one import-mode
+    session.add(OAuthToken(creator_id=creator.id, platform="youtube", access_token="t"))
+    session.add(OAuthToken(creator_id=creator.id, platform="tiktok", access_token="t"))
+    session.add(PlatformAccount(creator_id=creator.id, platform="youtube", mode="native"))
+    session.add(PlatformAccount(creator_id=creator.id, platform="tiktok", mode="native"))
+    session.add(PlatformAccount(creator_id=creator.id, platform="instagram", mode="import"))
+    session.commit()
+    fake = _FakeQueue()
+    monkeypatch.setattr(q, "get_queue", lambda *a, **k: fake)
+
+    r = client.post(f"/admin/creators/{creator.id}/sync-all", headers=_admin())
+    assert r.status_code == 200
+    body = r.json()
+    assert body["dispatched"] == ["tiktok", "youtube"] and body["count"] == 2
+    dispatched_platforms = {args[1] for _f, args in fake.calls}
+    assert dispatched_platforms == {"youtube", "tiktok"}  # not the import-mode IG
+
+
 def test_connectors_endpoint_reports_last_synced(client, creator, session):
     from datetime import datetime, timezone
 

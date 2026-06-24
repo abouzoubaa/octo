@@ -59,6 +59,14 @@ export const useGroup = routeAction$(async (data) => {
   return { ok: res !== null, n: res?.canonical_objects };
 });
 
+// Backfill every connected native platform at once.
+export const useSyncAll = routeAction$(async (data) => {
+  const res = await adminPost<{ dispatched: string[]; count: number }>(
+    `/admin/creators/${data.cid}/sync-all`,
+  );
+  return { ok: res !== null, dispatched: res?.dispatched ?? [], count: res?.count ?? 0 };
+});
+
 // Backfill a connected native platform (e.g. YouTube) through its connector.
 export const useSync = routeAction$(async (data) => {
   const res = await adminPost<{ job_id: string; platform: string }>(
@@ -89,6 +97,7 @@ export default component$(() => {
   const group = useGroup();
   const shift = useShift();
   const sync = useSync();
+  const syncAll = useSyncAll();
 
   return (
     <>
@@ -104,7 +113,22 @@ export default component$(() => {
         </div>
       </header>
 
-      <p class="results-label">Connectors</p>
+      <p class="results-label">
+        Connectors
+        <Form action={syncAll} style="display:inline; margin-left:8px;">
+          <input type="hidden" name="cid" value={data.value.cid} />
+          <button class="pill-btn ghost" type="submit">
+            ⟲ Sync all
+          </button>
+        </Form>
+        {syncAll.value?.ok && (
+          <span class="open" style="margin-left:6px;">
+            {syncAll.value.count > 0
+              ? `queued ${syncAll.value.dispatched.join(", ")} ✓`
+              : "nothing to sync"}
+          </span>
+        )}
+      </p>
       {data.value.allPlatforms.map((p) => (
         <div class="result glass" key={p.platform}>
           <div class="meta">

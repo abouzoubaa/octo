@@ -138,6 +138,29 @@ def trigger_native_sync(creator_id: str, platform: str = "youtube",
             "channel": account.external_account_id if account else None}
 
 
+@router.post("/creators/{creator_id}/sync-all")
+def trigger_sync_all(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    """One-click: enqueue a native sync for every authorized, content-hosting native
+    account the creator has connected. Returns the platforms dispatched."""
+    from cci_core.connectors import capabilities_for
+    from cci_core.connectors.base import CONTENT_READ
+    from cci_workers.queue import INGEST, get_queue
+
+    accounts = db.scalars(select(PlatformAccount).where(
+        PlatformAccount.creator_id == creator_id,
+        PlatformAccount.mode == "native")).all()
+    authorized = {t.platform for t in db.scalars(select(OAuthToken).where(
+        OAuthToken.creator_id == creator_id)).all()}
+    queue = get_queue(INGEST)
+    dispatched = []
+    for a in accounts:
+        if a.platform in authorized and CONTENT_READ in capabilities_for(a.platform):
+            queue.enqueue("cci_workers.sync_native.sync_native",
+                          creator_id, a.platform, job_timeout=3600 * 3)
+            dispatched.append(a.platform)
+    return {"dispatched": sorted(dispatched), "count": len(dispatched)}
+
+
 @router.post("/creators/{creator_id}/process")
 def trigger_processing(creator_id: str) -> dict:
     from cci_workers.queue import INGEST, get_queue
