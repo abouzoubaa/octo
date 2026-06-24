@@ -1,9 +1,12 @@
 # Sift — Agent Layer Roadmap
 
-> Companion to `IMPLEMENTATION_PLAN.md` (the v1 technical plan) and
-> `ROADMAP_TO_FULL_APP.md` (productionization gaps). This document maps the
-> **"Sift, as a Personal Agent" proposal (rev 2)** onto the code that exists
-> today, so each feature reads as an *increment*, not a rewrite.
+> **Superseded by [`ROADMAP.md`](ROADMAP.md)** — the unified roadmap merges this
+> agent feature layer (Axis B) with the production-grade checklist (Axis A) on
+> one timeline. This file is kept as the detailed feature-axis source.
+>
+> Companion to `IMPLEMENTATION_PLAN.md` (the v1 technical plan). This document
+> maps the **"Sift, as a Personal Agent" proposal (rev 2)** onto the code that
+> exists today, so each feature reads as an *increment*, not a rewrite.
 
 Sift v1 *shows* a creator what their audience wants. The agent layer *acts* on
 it — advise, execute, close — always behind the approval gate. **v1 ships

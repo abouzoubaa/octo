@@ -1,5 +1,9 @@
 # Roadmap to a Full App
 
+> **Superseded by [`ROADMAP.md`](ROADMAP.md)** — the unified roadmap merges this
+> production-grade checklist (Axis A) with the Sift agent feature layer (Axis B)
+> on one timeline. This file is kept as the detailed production-axis source.
+
 What exists today is a working **v1 proof-of-concept**: the whole loop runs end
 to end (search → cited answer → comment-to-DM → Demand Radar → affiliate links),
 with 42 passing tests against real Postgres+pgvector. This document lists
