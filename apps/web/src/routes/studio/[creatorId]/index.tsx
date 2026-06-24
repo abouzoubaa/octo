@@ -23,7 +23,7 @@ interface Briefing {
   drafted_post: { draft_id: string; title: string; hooks: string[] | null } | null;
 }
 
-export const useOverview = routeLoader$(async ({ params }) => {
+export const useOverview = routeLoader$(async ({ params, query }) => {
   const cid = params.creatorId;
   const [creators, radar, briefing, metrics, northStar] = await Promise.all([
     adminGet<{ id: string; handle: string }[]>("/admin/creators"),
@@ -33,7 +33,30 @@ export const useOverview = routeLoader$(async ({ params }) => {
     adminGet<import("~/lib/admin-api").NorthStar>(`/agent/creators/${cid}/north-star`),
   ]);
   const creator = (creators ?? []).find((c) => c.id === cid);
-  return { cid, handle: creator?.handle ?? cid, radar: radar ?? [], briefing, metrics, northStar };
+  const allCards = radar ?? [];
+  // platform chips: every platform that contributed demand to any card (not search)
+  const platforms = [
+    ...new Set(
+      allCards.flatMap((c) =>
+        Object.keys(c.source_breakdown ?? {}).filter((k) => k !== "search" && k !== "unknown"),
+      ),
+    ),
+  ].sort();
+  const platform = query.get("platform");
+  const cards =
+    platform && platforms.includes(platform)
+      ? allCards.filter((c) => (c.source_breakdown?.[platform] ?? 0) > 0)
+      : allCards;
+  return {
+    cid,
+    handle: creator?.handle ?? cid,
+    radar: cards,
+    platforms,
+    platform: platform && platforms.includes(platform) ? platform : null,
+    briefing,
+    metrics,
+    northStar,
+  };
 });
 
 // Move a demand card through its lifecycle (idea → drafting → published → …)
@@ -60,6 +83,15 @@ export const useSeries = routeAction$(async (data) => {
   }>(`/agent/demand/${data.topicId}/series`);
   return res ?? null;
 });
+
+const PLATFORM_ICON: Record<string, string> = {
+  instagram: "📸",
+  youtube: "▶️",
+  tiktok: "🎵",
+  newsletter: "✉️",
+  podcast: "🎙️",
+  discord: "💬",
+};
 
 // the next lifecycle step + the action verb a creator actually thinks in
 const NEXT_STATE: Record<string, { to: string; verb: string } | null> = {
@@ -139,8 +171,28 @@ export default component$(() => {
       )}
 
       <p class="results-label">Opportunity queue</p>
+      {o.value.platforms.length > 1 && (
+        <div class="actions" style="margin-bottom:10px;">
+          <Link href={`/studio/${o.value.cid}`} class={`pill-btn ${o.value.platform ? "ghost" : ""}`}>
+            All
+          </Link>
+          {o.value.platforms.map((p) => (
+            <Link
+              key={p}
+              href={`?platform=${p}`}
+              class={`pill-btn ${o.value.platform === p ? "" : "ghost"}`}
+            >
+              {PLATFORM_ICON[p] ?? "🔌"} {p}
+            </Link>
+          ))}
+        </div>
+      )}
       {o.value.radar.length === 0 && (
-        <div class="empty-state glass">No opportunities yet — run Radar to populate.</div>
+        <div class="empty-state glass">
+          {o.value.platform
+            ? `No ${o.value.platform} demand this cycle.`
+            : "No opportunities yet — run Radar to populate."}
+        </div>
       )}
       {o.value.radar.map((c) => (
         <div class="result glass" key={c.id}>
@@ -156,6 +208,15 @@ export default component$(() => {
                 ? " · ⚠ inflatable"
                 : ""}
             </span>
+            {c.source_breakdown && (
+              <span class="date">
+                {Object.keys(c.source_breakdown)
+                  .filter((k) => k !== "search" && k !== "unknown")
+                  .map((k) => PLATFORM_ICON[k] ?? "🔌")
+                  .join(" ")}
+                {c.demand_segment === "everywhere" ? " · everywhere" : ""}
+              </span>
+            )}
           </div>
           <p class="caption">{c.label}</p>
           {c.recommendation && <p class="evidence">{c.recommendation}</p>}

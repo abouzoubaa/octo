@@ -311,6 +311,8 @@ def radar_cards(creator_id: str, week: str | None = None,
         "creator_marked": c.creator_marked, "state": c.state.value,
         "opportunity_score": c.opportunity_score,
         "opportunity_components": c.opportunity_components,
+        "source_breakdown": c.source_breakdown,
+        "demand_segment": c.demand_segment,
         "integrity": {
             "unique_askers": c.unique_askers, "organic_count": c.organic_count,
             "prompted_count": c.prompted_count, "persistence_weeks": c.persistence_weeks,

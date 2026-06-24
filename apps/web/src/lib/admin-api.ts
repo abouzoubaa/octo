@@ -53,6 +53,8 @@ export interface DemandCard {
   state: string;
   coverage: { gap?: boolean } | null;
   opportunity_score: number | null;
+  source_breakdown?: Record<string, number> | null;
+  demand_segment?: string | null;
   integrity?: {
     unique_askers: number;
     manipulation_risk?: number | null;

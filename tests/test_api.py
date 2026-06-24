@@ -108,6 +108,22 @@ def test_radar_mark(client, seeded_creator, session):
     assert resp.status_code == 200
 
 
+def test_radar_exposes_source_breakdown(client, seeded_creator, session):
+    """Radar cards carry the per-platform demand breakdown the UI filters on."""
+    from cci_workers.radar import build_radar
+
+    build_radar(seeded_creator.id, backlog=True)
+    resp = client.get(f"/admin/creators/{seeded_creator.id}/radar",
+                      headers=_admin_headers())
+    assert resp.status_code == 200
+    cards = resp.json()
+    assert cards
+    # the fields are present on the card contract (values may be None pre-segmentation)
+    assert "source_breakdown" in cards[0] and "demand_segment" in cards[0]
+    # the demo corpus is Instagram, so at least one card attributes demand to it
+    assert any((c.get("source_breakdown") or {}).get("instagram") for c in cards)
+
+
 def test_public_api_key_scope_enforced(client, seeded_creator, session):
     """A key minted without the demand:read scope must be rejected (fail-closed)."""
     from cci_agent.team import mint_api_key
