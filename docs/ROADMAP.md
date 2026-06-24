@@ -20,6 +20,13 @@ want, and helps you build it."**
 > Priority (Axis A): 🔴 P0 before launch · 🟠 P1 to scale · 🟢 P2 growth
 > Release (Axis B): v1.5 · v2 · v3
 
+> **Build status (Axis B — agent features):** the entire agent feature layer
+> (foundations + v1.5 + v2 + v3) is now **implemented** in `packages/agent`
+> (`cci_agent`) and the `/agent` + `/v1/public` APIs, with a creator dashboard
+> (`apps/web/src/routes/studio`). 101 backend tests green, eval gate passing.
+> Deliberately deferred (need multi-creator scale): brand partnership portal,
+> creator marketplace. Axis A (production-grade plumbing) is the remaining work.
+
 ---
 
 ## The agent loop
