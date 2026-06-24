@@ -158,9 +158,15 @@ def draft_shift(session: Session, source_post_id: str, target_platform: str,
     return adapted
 
 
-def build_series(session: Session, creator_id: str, topic: DemandTopic) -> dict:
+def build_series(session: Session, creator_id: str, topic: DemandTopic,
+                 persist: bool = True) -> dict:
     """When a topic draws repeated demand, propose a planned arc: parts, FAQ, DM
-    follow-up, offer tie-in."""
+    follow-up, offer tie-in.
+
+    When ``persist`` is set, each part is saved as a ContentDraft stub linked to the
+    topic so the plan survives a refresh and feeds the normal draft → approve flow.
+    Idempotent: re-running reuses the stub already saved for each part index, so a
+    creator's edits are never clobbered."""
     try:
         data = json.loads(get_llm().complete(
             "Propose a content series arc for a recurring audience topic. JSON: "
@@ -171,4 +177,35 @@ def build_series(session: Session, creator_id: str, topic: DemandTopic) -> dict:
     except Exception:  # noqa: BLE001
         data = {"parts": [topic.label], "faq_post": "", "dm_followup": "", "offer_tie_in": ""}
     data["topic_id"] = topic.id
+    if persist:
+        data["draft_ids"] = _persist_series(session, creator_id, topic, data)
     return data
+
+
+def _persist_series(session: Session, creator_id: str, topic: DemandTopic,
+                    data: dict) -> list[str]:
+    from cci_core.models import ContentDraft
+
+    existing = {
+        (d.brief or {}).get("series_part"): d
+        for d in session.scalars(select(ContentDraft).where(
+            ContentDraft.creator_id == creator_id,
+            ContentDraft.demand_topic_id == topic.id))
+        if (d.brief or {}).get("series")}
+    ids: list[str] = []
+    for i, part in enumerate(data.get("parts", [])):
+        if i in existing:
+            ids.append(existing[i].id)
+            continue
+        draft = ContentDraft(
+            creator_id=creator_id, demand_topic_id=topic.id,
+            title=f"Series · {topic.label}: {str(part)[:160]}"[:256],
+            brief={"series": True, "series_part": i, "part": part,
+                   "faq_post": data.get("faq_post"),
+                   "dm_followup": data.get("dm_followup"),
+                   "offer_tie_in": data.get("offer_tie_in")},
+            status="draft")
+        session.add(draft)
+        session.flush()
+        ids.append(draft.id)
+    return ids

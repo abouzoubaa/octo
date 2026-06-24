@@ -193,6 +193,23 @@ def test_build_series(seeded_creator, session):
     assert "parts" in series and series["topic_id"] == topic.id
 
 
+def test_build_series_persists_draft_stubs(seeded_creator, session):
+    from cci_core.models import ContentDraft
+
+    topic = _radar(seeded_creator, session)[0]
+    series = build_series(session, seeded_creator.id, topic)
+    ids = series["draft_ids"]
+    assert ids and len(ids) == len(series["parts"])
+    saved = session.scalars(select(ContentDraft).where(
+        ContentDraft.creator_id == seeded_creator.id,
+        ContentDraft.demand_topic_id == topic.id)).all()
+    assert {d.id for d in saved} >= set(ids)
+    assert all((d.brief or {}).get("series") for d in saved)
+    # re-running reuses the same stubs (idempotent, no clobber)
+    again = build_series(session, seeded_creator.id, topic)
+    assert again["draft_ids"] == ids
+
+
 def test_sift_and_shift_handles_no_youtube(seeded_creator, session):
     assert sift_and_shift(session, seeded_creator.id) == []  # demo corpus is IG-only
 

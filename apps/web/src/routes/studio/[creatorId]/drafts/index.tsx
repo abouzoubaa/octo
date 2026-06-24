@@ -44,7 +44,7 @@ export default component$(() => {
       )}
 
       {data.value.drafts.map((d) => (
-        <div class="result glass" key={d.id}>
+        <div class="result glass" key={d.id} id={`draft-${d.id}`}>
           <div class="meta">
             <span class="type">{d.status}</span>
           </div>

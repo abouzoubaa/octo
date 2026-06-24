@@ -351,6 +351,17 @@ body {
 .actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
 .actions form { margin: 0; }
 
+/* Deep-link highlight: when arriving at #draft-<id> from a Sift & Shift / series
+   action, briefly ring the target card so the creator sees where it landed. */
+.result:target {
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-lift);
+  animation: target-pulse 1.6s ease-out 1;
+}
+@keyframes target-pulse {
+  0% { box-shadow: 0 0 0 4px var(--accent), var(--shadow-lift); }
+  100% { box-shadow: 0 0 0 2px var(--accent), var(--shadow-lift); }
+}
+
 /* Series arc panel — the multi-part plan proposed for a recurring-demand topic */
 .series-arc {
   margin-top: 12px; padding: 13px 15px;

@@ -165,7 +165,10 @@ export default component$(() => {
               </button>
             </Form>
             {shift.value?.ok && shift.value.draftId && (
-              <Link class="pill-btn ghost" href={`/studio/${data.value.cid}/drafts`}>
+              <Link
+                class="pill-btn ghost"
+                href={`/studio/${data.value.cid}/drafts#draft-${shift.value.draftId}`}
+              >
                 ✓ Drafted — open Drafts
               </Link>
             )}

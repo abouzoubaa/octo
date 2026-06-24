@@ -56,6 +56,7 @@ export const useSeries = routeAction$(async (data) => {
     faq_post: string;
     dm_followup: string;
     offer_tie_in: string;
+    draft_ids: string[];
   }>(`/agent/demand/${data.topicId}/series`);
   return res ?? null;
 });
@@ -209,6 +210,14 @@ export default component$(() => {
               )}
               {series.value.offer_tie_in && (
                 <p class="evidence">🎯 Offer tie-in: {series.value.offer_tie_in}</p>
+              )}
+              {series.value.draft_ids && series.value.draft_ids.length > 0 && (
+                <Link
+                  class="pill-btn ghost"
+                  href={`/studio/${o.value.cid}/drafts#draft-${series.value.draft_ids[0]}`}
+                >
+                  💾 Saved to Drafts → open
+                </Link>
               )}
             </div>
           )}
