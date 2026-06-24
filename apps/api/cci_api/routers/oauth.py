@@ -37,19 +37,38 @@ def _redirect_uri() -> str:
     return f"{get_settings().public_base_url.rstrip('/')}/oauth/instagram/callback"
 
 
-def _sign_state(handle: str) -> str:
-    key = get_settings().admin_token.encode()
-    mac = hmac.new(key, handle.encode(), hashlib.sha256).hexdigest()[:16]
-    return f"{handle}.{mac}"
+STATE_TTL_SECONDS = 600  # a state is valid for 10 minutes (limits replay)
+
+
+def _state_key() -> bytes:
+    s = get_settings()
+    # a dedicated signing secret, not the admin token; falls back with a salt
+    return (s.oauth_state_secret or (s.admin_token + ":oauth")).encode()
+
+
+def _sign_state(handle: str, issued: int | None = None) -> str:
+    issued = issued if issued is not None else int(_now())
+    payload = f"{handle}.{issued}"
+    mac = hmac.new(_state_key(), payload.encode(), hashlib.sha256).hexdigest()  # full tag
+    return f"{payload}.{mac}"
 
 
 def _verify_state(state: str) -> str | None:
-    if "." not in state:
+    parts = state.rsplit(".", 2)
+    if len(parts) != 3:
         return None
-    handle, mac = state.rsplit(".", 1)
-    if hmac.compare_digest(_sign_state(handle), state):
-        return handle
-    return None
+    handle, issued, _mac = parts
+    if not hmac.compare_digest(_sign_state(handle, int(issued)) if issued.isdigit() else "", state):
+        return None
+    if int(_now()) - int(issued) > STATE_TTL_SECONDS:  # expired
+        return None
+    return handle
+
+
+def _now() -> float:
+    import time
+
+    return time.time()
 
 
 @router.get("/instagram/start")

@@ -82,10 +82,13 @@ def test_pro_plan_unlimited(seeded_creator, session):
 
 
 def test_fake_checkout_and_webhook_roundtrip(seeded_creator, session):
+    import json
+
     provider = get_billing_provider()
     url = provider.create_checkout(seeded_creator.id, Plan.pro, "http://x/studio")
     assert "plan=pro" in url
-    event = provider.parse_webhook({"creator_id": seeded_creator.id, "plan": "pro"}, None)
+    raw = json.dumps({"creator_id": seeded_creator.id, "plan": "pro"}).encode()
+    event = provider.parse_webhook(raw, None)
     assert event["plan"] == Plan.pro
 
 

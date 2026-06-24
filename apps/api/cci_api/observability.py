@@ -56,7 +56,25 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 
 # --- per-IP sliding-window rate limiter ----------------------------------------
+# In-memory, per process (single instance). For multiple API replicas, swap for a
+# Redis-backed limiter. Idle IPs are swept and the key count is capped so a flood
+# of distinct client IPs can't grow this map unboundedly.
 _hits: dict[str, deque] = defaultdict(deque)
+_MAX_TRACKED_IPS = 50_000
+_last_sweep = 0.0
+
+
+def _sweep(now: float) -> None:
+    """Drop IPs whose window has fully aged out; hard-cap total tracked keys."""
+    global _last_sweep
+    if now - _last_sweep < 60.0 and len(_hits) < _MAX_TRACKED_IPS:
+        return
+    _last_sweep = now
+    stale = [ip for ip, w in _hits.items() if not w or now - w[-1] > 60.0]
+    for ip in stale:
+        _hits.pop(ip, None)
+    if len(_hits) >= _MAX_TRACKED_IPS:  # pathological: still too many → reset
+        _hits.clear()
 
 
 def rate_limit(request: Request) -> None:
@@ -68,6 +86,7 @@ def rate_limit(request: Request) -> None:
         return
     ip = (request.client.host if request.client else "unknown")
     now = time.monotonic()
+    _sweep(now)
     window = _hits[ip]
     while window and now - window[0] > 60.0:
         window.popleft()

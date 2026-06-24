@@ -74,12 +74,16 @@ def set_plan(creator_id: str, body: SetPlanIn, db: Session = Depends(get_db)) ->
 
 @router.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)) -> dict:
-    """Provider subscription-lifecycle webhook (signature-verified for Stripe)."""
-    payload = await request.json()
+    """Provider subscription-lifecycle webhook — authenticated by signature over the
+    RAW body. The fake provider is refused in production (it can't authenticate)."""
+    s = get_settings()
+    if s.billing_provider == "fake" and not s.debug:
+        raise HTTPException(status_code=403, detail="fake billing webhook disabled in production")
+    raw = await request.body()
     signature = request.headers.get("stripe-signature")
-    event = get_billing_provider().parse_webhook(payload, signature)
+    event = get_billing_provider().parse_webhook(raw, signature)
     if event is None:
-        return {"received": True, "applied": False}
+        return {"received": True, "applied": False}  # bad signature / unparseable
     apply_subscription_event(db, event["creator_id"], plan=event["plan"],
                              status=event.get("status", "active"))
     return {"received": True, "applied": True}

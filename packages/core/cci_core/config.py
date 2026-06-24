@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     ig_app_secret: str = ""
     ig_graph_base: str = "https://graph.instagram.com/v23.0"
     ig_webhook_verify_token: str = "change-me-too"
+    oauth_state_secret: str = ""  # dedicated HMAC key for OAuth state (falls back to admin_token)
     yt_api_key: str = ""
 
     # --- observability & limits -------------------------------------------------

@@ -7,6 +7,7 @@ the whole flow is testable without a Stripe account.
 """
 from __future__ import annotations
 
+import hmac
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 
@@ -92,8 +93,19 @@ def usage_this_month(session: Session, creator_id: str, metric: str) -> int:
 
 
 def check_quota(session: Session, creator_id: str, metric: str) -> None:
-    """Raise PlanError if the creator is at/over their monthly quota for `metric`."""
-    quota = PLAN_QUOTAS.get(plan_for(session, creator_id), {}).get(metric)
+    """Raise PlanError if the creator is at/over their monthly quota for `metric`.
+
+    Locks the subscription row (SELECT … FOR UPDATE) so two concurrent requests
+    can't both pass the check and overrun the quota — the second blocks until the
+    first commits its usage event.
+    """
+    sub = session.get(Subscription, creator_id)
+    if sub is None:
+        sub = get_subscription(session, creator_id)
+    else:
+        # take a row lock to serialize concurrent quota checks for this creator
+        session.refresh(sub, with_for_update=True)
+    quota = PLAN_QUOTAS.get(sub.plan, {}).get(metric)
     if quota is None:
         return  # unlimited
     if usage_this_month(session, creator_id, metric) >= quota:
@@ -130,36 +142,48 @@ class BillingProvider(ABC):
         """Return a checkout URL for the creator to subscribe to `plan`."""
 
     @abstractmethod
-    def parse_webhook(self, payload: dict, signature: str | None) -> dict | None:
-        """Normalise a provider webhook into {creator_id, plan, status, ...} or None."""
+    def parse_webhook(self, raw_body: bytes, signature: str | None) -> dict | None:
+        """Verify + normalise a provider webhook from the RAW request bytes into
+        {creator_id, plan, status} — or None if the signature is invalid/unparseable.
+        Implementations MUST authenticate before trusting the body."""
 
 
 class FakeBilling(BillingProvider):
-    """Offline billing: 'checkout' immediately returns a local confirm URL; the
-    webhook echoes a normalised event. Lets the whole flow run without Stripe."""
+    """Offline billing for dev/tests. The webhook requires a shared secret when one
+    is configured (CCI_STRIPE_WEBHOOK_SECRET); without a secret it only works in
+    debug mode (the route refuses the fake provider in production)."""
 
     name = "fake"
 
     def create_checkout(self, creator_id: str, plan: Plan, success_url: str) -> str:
         return f"{success_url}?fake_checkout=1&creator={creator_id}&plan={plan.value}"
 
-    def parse_webhook(self, payload: dict, signature: str | None) -> dict | None:
+    def parse_webhook(self, raw_body: bytes, signature: str | None) -> dict | None:
+        import json
+
+        secret = get_settings().stripe_webhook_secret
+        if secret and not (signature and hmac.compare_digest(signature, secret)):
+            return None  # wrong/absent shared secret
+        try:
+            payload = json.loads(raw_body or b"{}")
+        except (ValueError, TypeError):
+            return None
         if "creator_id" not in payload or "plan" not in payload:
             return None
-        return {"creator_id": payload["creator_id"],
-                "plan": Plan(payload["plan"]),
+        return {"creator_id": payload["creator_id"], "plan": Plan(payload["plan"]),
                 "status": payload.get("status", "active")}
 
 
 class StripeBilling(BillingProvider):
-    """Stripe-backed billing. Implemented behind the same interface; requires the
-    `stripe` SDK + keys. Kept minimal — wire fully when going live."""
+    """Stripe-backed billing. Verifies the webhook signature over the RAW body via
+    stripe.Webhook.construct_event before trusting any field."""
 
     name = "stripe"
 
-    def __init__(self, api_key: str, price_ids: dict[str, str]):
+    def __init__(self, api_key: str, price_ids: dict[str, str], webhook_secret: str):
         self.api_key = api_key
-        self.price_ids = price_ids  # {plan_value: stripe_price_id}
+        self.price_ids = price_ids
+        self.webhook_secret = webhook_secret
 
     def create_checkout(self, creator_id: str, plan: Plan, success_url: str) -> str:
         import stripe  # lazy
@@ -174,11 +198,16 @@ class StripeBilling(BillingProvider):
         )
         return session.url
 
-    def parse_webhook(self, payload: dict, signature: str | None) -> dict | None:
-        # real impl verifies the signature via stripe.Webhook.construct_event;
-        # left minimal until Stripe keys are configured.
-        data = payload.get("data", {}).get("object", {})
-        meta = data.get("metadata", {})
+    def parse_webhook(self, raw_body: bytes, signature: str | None) -> dict | None:
+        import stripe
+
+        if not self.webhook_secret or not signature:
+            return None
+        try:
+            event = stripe.Webhook.construct_event(raw_body, signature, self.webhook_secret)
+        except Exception:  # noqa: BLE001 — invalid signature / malformed
+            return None
+        meta = event["data"]["object"].get("metadata", {})
         if not meta.get("creator_id"):
             return None
         return {"creator_id": meta["creator_id"], "plan": Plan(meta.get("plan", "creator")),
@@ -188,5 +217,5 @@ class StripeBilling(BillingProvider):
 def get_billing_provider() -> BillingProvider:
     s = get_settings()
     if s.billing_provider == "stripe" and s.stripe_api_key:
-        return StripeBilling(s.stripe_api_key, s.stripe_price_ids)
+        return StripeBilling(s.stripe_api_key, s.stripe_price_ids, s.stripe_webhook_secret)
     return FakeBilling()

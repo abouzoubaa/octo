@@ -144,9 +144,14 @@ def dispatch_approved(creator_id: str) -> dict:
         ) or 0
         budget = max(s.dm_hourly_cap - sent_last_hour, 0)
 
+        # comment-addressed jobs only. Agentic follow-up turns (comment_id IS NULL)
+        # are addressed to a DM thread, not a comment — they need the dedicated
+        # thread dispatcher (not yet built) and must not flow through here, where
+        # there is no comment to key the send on and no window to enforce.
         jobs = session.scalars(
             select(DmJob)
-            .where(DmJob.creator_id == creator_id, DmJob.status == DmStatus.approved)
+            .where(DmJob.creator_id == creator_id, DmJob.status == DmStatus.approved,
+                   DmJob.comment_id.isnot(None))
             .order_by(DmJob.created_at)
         ).all()
 
@@ -163,7 +168,12 @@ def dispatch_approved(creator_id: str) -> dict:
 
         for job in jobs:
             comment = session.get(Comment, job.comment_id)
-            if comment and comment.created_at and now - comment.created_at > window:
+            if comment is None:  # comment deleted since the job was queued
+                job.status = DmStatus.failed
+                job.error = "originating comment no longer exists"
+                stats["failed"] += 1
+                continue
+            if comment.created_at and now - comment.created_at > window:
                 job.status = DmStatus.expired  # outside the 7-day private-reply window
                 stats["expired"] += 1
                 continue
