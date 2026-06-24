@@ -81,10 +81,13 @@ export default component$(() => {
 
       <nav class="studio-nav">
         <Link href={`/studio/${o.value.cid}/inbox`} class="studio-nav-item glass">
-          📨 Approval inbox
+          📨 Inbox
         </Link>
         <Link href={`/studio/${o.value.cid}/drafts`} class="studio-nav-item glass">
           ✍️ Drafts
+        </Link>
+        <Link href={`/studio/${o.value.cid}/platforms`} class="studio-nav-item glass">
+          🔌 Platforms
         </Link>
       </nav>
 

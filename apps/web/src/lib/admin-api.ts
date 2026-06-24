@@ -66,6 +66,30 @@ export interface NorthStar {
   in_flight_loops: number;
 }
 
+export interface ConnectorRow {
+  platform: string;
+  connected?: boolean;
+  capabilities: string[];
+}
+
+export interface CanonicalRow {
+  id: string;
+  title: string;
+  topic: string | null;
+  variant_count: number;
+  platforms: string[];
+}
+
+export interface ShiftOpportunity {
+  canonical_id: string;
+  title: string;
+  source_platform: string;
+  source_post_id: string;
+  target_platform: string;
+  covered_on: string[];
+  has_demand: boolean;
+}
+
 export interface DmQueueItem {
   job_id: string;
   comment: string | null;
