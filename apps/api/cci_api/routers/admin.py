@@ -55,6 +55,27 @@ def ai_versions() -> dict:
     return provider_versions()
 
 
+@router.get("/platforms")
+def platforms() -> list[dict]:
+    """Every platform Sift can connect, with the capabilities its connector advertises."""
+    from cci_core.connectors import capabilities_for, supported_platforms
+
+    return [{"platform": p, "capabilities": sorted(capabilities_for(p))}
+            for p in supported_platforms()]
+
+
+@router.get("/creators/{creator_id}/connectors")
+def creator_connectors(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    """The creator's connected platforms and what each can actually do — the UI/agent
+    use this to show only the actions an account supports."""
+    from cci_core.connectors import capabilities_for
+
+    tokens = db.scalars(select(OAuthToken).where(
+        OAuthToken.creator_id == creator_id)).all()
+    return [{"platform": t.platform, "connected": True,
+             "capabilities": sorted(capabilities_for(t.platform))} for t in tokens]
+
+
 class TokenIn(BaseModel):
     platform: str
     access_token: str
