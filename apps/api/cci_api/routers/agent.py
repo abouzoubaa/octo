@@ -319,7 +319,7 @@ def make_draft(topic_id: str, db: Session = Depends(get_db)) -> dict:
     # open the immutable causal spine for this recommendation (with baseline + CI)
     from cci_agent.causal import create_intervention
 
-    intervention = create_intervention(db, topic, draft=draft)
+    create_intervention(db, topic, draft=draft)
     # advance the lifecycle if the creator is acting on it
     if topic.state in (DemandState.new, DemandState.idea):
         try:
