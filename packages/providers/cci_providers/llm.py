@@ -149,6 +149,18 @@ class FakeLLM(LLMProvider):
                                         "partner with us to answer them."})
         if "voice" in sys_l:
             return json.dumps({"score": 80, "deviations": []})
+        if "passage" in sys_l and "score" in sys_l:  # reranker
+            import re
+
+            q_match = re.search(r"Query:\s*(.+)", user)
+            q_tokens = set((q_match.group(1) if q_match else "").lower().split())
+            passages = re.findall(r"^\[(\d+)\] (.+)$", user, flags=re.MULTILINE)
+            scores = []
+            for n, text in passages:
+                pt = set(text.lower().split())
+                overlap = len(q_tokens & pt) / (len(q_tokens) or 1)
+                scores.append({"n": int(n), "score": round(min(overlap, 1.0), 3)})
+            return json.dumps({"scores": scores})
         if "thumbnail" in sys_l:
             return json.dumps({"concepts": [
                 {"text_overlay": first_line[:40] or "WATCH THIS", "layout": "face",

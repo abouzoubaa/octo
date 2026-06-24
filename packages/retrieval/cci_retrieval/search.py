@@ -95,6 +95,33 @@ def _rrf_merge(*ranked_lists: list[ChunkHit]) -> list[ChunkHit]:
     return merged
 
 
+def _rerank(query: str, merged: list[ChunkHit]) -> list[ChunkHit]:
+    """Reorder merged candidates with the configured reranker (no-op if 'none').
+
+    The reranker reorders the top candidates; we blend its 0..1 relevance into the
+    RRF score so the post-grouping below still has a meaningful magnitude. Tail
+    candidates beyond rerank_candidates keep their fused order.
+    """
+    from cci_providers import get_reranker
+
+    reranker = get_reranker()
+    if reranker is None or not merged:
+        return merged
+    from cci_core.config import get_settings
+
+    head = merged[: get_settings().rerank_candidates]
+    tail = merged[get_settings().rerank_candidates :]
+    scores = reranker.rerank(query, [h.text for h in head])
+    rescored = []
+    for hit, rel in zip(head, scores):
+        # keep RRF as a tie-breaker; relevance dominates ordering
+        blended = rel + 1e-3 * hit.score
+        rescored.append(ChunkHit(hit.chunk_id, hit.post_id, hit.source, hit.text,
+                                 hit.start_ts, blended))
+    rescored.sort(key=lambda h: h.score, reverse=True)
+    return rescored + tail
+
+
 def search(session: Session, creator_id: str, query: str,
            top_k: int | None = None) -> list[PostResult]:
     """Hybrid search returning post-level results with chunk evidence."""
@@ -106,6 +133,7 @@ def search(session: Session, creator_id: str, query: str,
     vec_hits = _vector_candidates(session, creator_id, query_vec, n_candidates)
     fts_hits = _fulltext_candidates(session, creator_id, query, n_candidates)
     merged = _rrf_merge(vec_hits, fts_hits)
+    merged = _rerank(query, merged)  # second-pass relevance model (no-op if disabled)
 
     vec_sim_by_post: dict[str, float] = {}
     for hit in vec_hits:

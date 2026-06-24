@@ -3,6 +3,7 @@ from functools import lru_cache
 
 from cci_core.config import get_settings
 from cci_providers.base import EmbeddingProvider, LLMProvider, OCRProvider, TranscriptionProvider
+from cci_providers.reranking import RerankProvider
 
 
 @lru_cache
@@ -50,6 +51,25 @@ def get_transcriber() -> TranscriptionProvider:
     from cci_providers.transcription import FakeTranscriber
 
     return FakeTranscriber()
+
+
+@lru_cache
+def get_reranker() -> RerankProvider | None:
+    """The second-pass reranker, or None when disabled (rerank_provider='none')."""
+    provider = get_settings().rerank_provider
+    if provider == "fake":
+        from cci_providers.reranking import FakeReranker
+
+        return FakeReranker()
+    if provider == "llm":
+        from cci_providers.reranking import LLMReranker
+
+        return LLMReranker(get_llm())
+    if provider == "cross-encoder":
+        from cci_providers.reranking import CrossEncoderReranker
+
+        return CrossEncoderReranker(get_settings().rerank_model)
+    return None  # 'none' → skip reranking
 
 
 @lru_cache

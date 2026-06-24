@@ -61,6 +61,9 @@ class Settings(BaseSettings):
 
     ocr_provider: str = "fake"  # fake | paddleocr
 
+    rerank_provider: str = "none"  # none | fake | llm | cross-encoder
+    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
     # --- billing ----------------------------------------------------------------
     billing_provider: str = "fake"  # fake | stripe
     stripe_api_key: str = ""

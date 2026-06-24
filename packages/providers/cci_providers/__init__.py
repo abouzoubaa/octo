@@ -14,6 +14,7 @@ from cci_providers.registry import (
     get_embedding_provider,
     get_llm,
     get_ocr,
+    get_reranker,
     get_transcriber,
 )
 
@@ -26,4 +27,5 @@ __all__ = [
     "get_embedding_provider",
     "get_transcriber",
     "get_ocr",
+    "get_reranker",
 ]
