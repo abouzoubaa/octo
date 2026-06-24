@@ -106,3 +106,27 @@ def test_radar_mark(client, seeded_creator, session):
     resp = client.post(f"/admin/radar/{card.id}/mark", json={"marked": "useful"},
                        headers=_admin_headers())
     assert resp.status_code == 200
+
+
+def test_public_api_key_scope_enforced(client, seeded_creator, session):
+    """A key minted without the demand:read scope must be rejected (fail-closed)."""
+    from cci_agent.team import mint_api_key
+
+    _, no_scope = mint_api_key(session, seeded_creator.id, "noscope", scopes=[])
+    _, scoped = mint_api_key(session, seeded_creator.id, "scoped", scopes=["demand:read"])
+    session.commit()
+
+    assert client.get("/v1/public/demand").status_code == 401  # no key
+    assert client.get("/v1/public/demand",
+                      headers={"Authorization": f"Bearer {no_scope}"}).status_code == 403
+    assert client.get("/v1/public/demand",
+                      headers={"Authorization": f"Bearer {scoped}"}).status_code == 200
+
+
+def test_waitlist_rejects_bad_email(client, seeded_creator):
+    bad = client.post(f"/api/{seeded_creator.handle}/waitlist",
+                      json={"email": "not-an-email", "topic": "carb cycling"})
+    assert bad.status_code == 422  # EmailStr validation
+    ok = client.post(f"/api/{seeded_creator.handle}/waitlist",
+                     json={"email": "fan@example.com", "topic": "carb cycling"})
+    assert ok.status_code == 200

@@ -329,6 +329,8 @@ def close_loop_endpoint(topic_id: str, db: Session = Depends(get_db)) -> dict:
     if topic is None:
         raise HTTPException(status_code=404, detail="demand topic not found")
     creator = db.get(Creator, topic.creator_id)
+    if creator is None:
+        raise HTTPException(status_code=404, detail="creator not found")
     created = close_loop(db, topic, creator.handle)
     return {"notified": len(created), "state": topic.state.value}
 

@@ -83,9 +83,9 @@ def test_loop_closer_notifies_recent_askers(seeded_creator, session):
     session.add(topic)
     session.flush()
     created = close_loop(session, topic, seeded_creator.handle)
-    assert created == [c.id]
-    assert topic.state == DemandState.loop_closed
     job = session.scalar(select(DmJob).where(DmJob.comment_id == c.id))
+    assert created == [job.id]  # returns the created job ids
+    assert topic.state == DemandState.loop_closed
     assert job.status == DmStatus.pending_approval  # approval mode, never auto-send
 
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query as QueryParam
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -155,8 +155,8 @@ def track_click(post_id: str, creator: Creator = Depends(get_creator),
 
 
 class WaitlistIn(BaseModel):
-    email: str
-    topic: str
+    email: EmailStr
+    topic: str = Field(min_length=1, max_length=500)
 
 
 @router.post("/api/{handle}/waitlist")

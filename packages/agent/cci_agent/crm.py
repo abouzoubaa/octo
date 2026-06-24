@@ -55,6 +55,8 @@ def lifecycle_segments(session: Session, creator_id: str) -> dict:
     segments = {"engaged": [], "dormant": [], "new": []}
     for p in profiles:
         last = datetime.fromisoformat(p["last_seen"]) if p["last_seen"] else None
+        if last is not None and last.tzinfo is None:  # normalise to UTC-aware for comparison
+            last = last.replace(tzinfo=timezone.utc)
         if p["comments"] >= 3 and last and last >= dormant_cutoff:
             segments["engaged"].append(p["pseudonym"])
         elif last and last < dormant_cutoff:

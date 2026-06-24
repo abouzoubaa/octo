@@ -28,18 +28,25 @@ EMOTION_MARKERS = {
 # ------------------------------------------------------------- sentiment & emotion
 
 
-def score_sentiment(text: str) -> str:
-    """Lightweight emotion read — markers first, LLM only when ambiguous."""
+def score_sentiment(text: str, *, use_llm: bool = True) -> str:
+    """Lightweight emotion read — markers first, LLM only when ambiguous.
+
+    Pass use_llm=False on hot paths (e.g. per-comment at ingestion) to stay purely
+    keyword-based and avoid a network round-trip per item.
+    """
     lowered = (text or "").lower()
     for emotion, markers in EMOTION_MARKERS.items():
         if any(m in lowered for m in markers):
             return emotion
+    if not use_llm:
+        return "neutral"
     try:
         data = json.loads(get_llm().complete(
             "Classify the emotional tenor of an audience question into one of: "
             "anxiety, confusion, excitement, frustration, neutral. JSON: {\"emotion\": \"...\"}.",
             text or "", json_output=True, max_tokens=40))
-        return data.get("emotion") if data.get("emotion") in EMOTIONS else "neutral"
+        emotion = data.get("emotion") if isinstance(data, dict) else None
+        return emotion if emotion in EMOTIONS else "neutral"
     except Exception:  # noqa: BLE001
         return "neutral"
 
@@ -55,9 +62,11 @@ def sentiment_summary(session: Session, creator_id: str, days: int = 30) -> dict
     counts = dict.fromkeys(EMOTIONS, 0)
     for c in comments:
         emotion = c.sentiment or score_sentiment(c.text)
+        if emotion not in EMOTIONS:  # clamp legacy/unknown values out of vocabulary
+            emotion = "neutral"
         if c.sentiment is None:
             c.sentiment = emotion  # backfill persisted read
-        counts[emotion] = counts.get(emotion, 0) + 1
+        counts[emotion] += 1
     total = sum(counts.values())
     return {"total": total, "counts": counts,
             "dominant": max(counts, key=counts.get) if total else "neutral"}
@@ -159,9 +168,11 @@ def strategy_advisor(session: Session, creator_id: str, question: str) -> dict:
     ).all()
     n_external = session.scalar(
         select(func.count(ExternalSignal.id)).where(ExternalSignal.creator_id == creator_id)) or 0
+    # a topic is an "open gap" when retrieval coverage is weak (matches content_gap_map)
+    gaps = [t.label for t in topics if (t.coverage or {}).get("strength", 0.0) < 0.35]
     facts = [
         f"Top demand: {', '.join(t.label for t in topics[:5]) or 'none yet'}",
-        f"Open gaps: {', '.join(t.label for t in topics if (t.coverage or {}).get('gap')) or 'none'}",
+        f"Open gaps: {', '.join(gaps) or 'none'}",
         f"Cross-platform signals captured: {n_external}",
         f"Dominant audience emotion: {sentiment_summary(session, creator_id)['dominant']}",
     ]

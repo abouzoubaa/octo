@@ -78,7 +78,8 @@ plain-language version: `GOING_LIVE.md`.)
 | Creator login / session management | 🔴 P0 | ❌ | Real accounts, not a single shared admin token. |
 | YouTube OAuth flow | 🟠 P1 | ❌ | Same pattern for owned channels. |
 | Self-serve signup + onboarding wizard | 🟠 P1 | ❌ | Connect → backfill progress → label questions → publish link. |
-| Role-based access (creator/operator/admin) | 🟠 P1 | ❌ | Today: one global bearer token. |
+| Role-based access (creator/operator/admin) | 🟠 P1 | 🟡 | Team roles + capability gating exist (`team.py`); the API is still one global operator token. |
+| Resource-level ownership checks | 🟠 P1 | ❌ | Several `/agent` + `/admin` endpoints take a bare resource id and resolve the creator *from* it. Safe under the single trusted-operator token (no privilege escalation), but once per-creator/multi-operator auth lands, each such endpoint must assert `resource.creator_id == caller's creator`. |
 
 ### 2.2 Multi-Tenancy, Billing & Plans
 | Item | Pri | Status | Notes |

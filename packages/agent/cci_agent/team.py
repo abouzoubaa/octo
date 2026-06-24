@@ -51,13 +51,17 @@ def audit(session: Session, creator_id: str, actor: str, action: str,
 
 def mint_api_key(session: Session, creator_id: str, name: str,
                  scopes: list[str] | None = None) -> tuple[ApiKey, str]:
-    """Create an API key. Returns (record, full_key); the full key is shown ONCE."""
-    raw = secrets.token_urlsafe(24)
-    prefix = raw[:8]
-    full = f"sift_{prefix}_{raw}"
+    """Create an API key. Returns (record, full_key); the full key is shown ONCE.
+
+    The prefix is an INDEPENDENT non-secret identifier (not a slice of the secret),
+    so storing/indexing/logging it never leaks secret material.
+    """
+    prefix = secrets.token_hex(4)  # non-secret lookup id, independent of the secret
+    secret = secrets.token_urlsafe(24)
+    full = f"sift_{prefix}_{secret}"
     key_hash = hashlib.sha256(full.encode()).hexdigest()
     record = ApiKey(creator_id=creator_id, name=name, prefix=prefix,
-                    key_hash=key_hash, scopes=scopes)
+                    key_hash=key_hash, scopes=scopes or [])
     session.add(record)
     session.flush()
     return record, full
@@ -79,4 +83,5 @@ def revoke_api_key(session: Session, key_id: str) -> bool:
     if record is None:
         return False
     record.revoked = True
+    session.flush()  # ensure the revocation persists even without an outer commit
     return True

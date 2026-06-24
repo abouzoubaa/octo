@@ -146,9 +146,10 @@ def revenue_forecast(session: Session, creator_id: str, *, days: int = 30) -> di
         trend = "up"
     elif prev_clicks and clicks < prev_clicks * 0.9:
         trend = "down"
+    # linear extrapolation: continue the observed period-over-period delta, floored at 0
+    projected = max(clicks + (clicks - prev_clicks), 0) if prev_clicks else clicks
     return {"window_days": days, "affiliate_clicks": clicks, "prev_window": prev_clicks,
-            "trend": trend, "projected_next_window": round(clicks * (clicks / prev_clicks))
-            if prev_clicks else clicks,
+            "trend": trend, "projected_next_window": projected,
             "note": "directional only — needs conversion + revenue data to be precise"}
 
 

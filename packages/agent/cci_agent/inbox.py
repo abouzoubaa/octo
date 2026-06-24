@@ -32,8 +32,8 @@ clarifying question with two options — never open-ended. Return JSON:
 """
 
 
-def label_message(text: str) -> str:
-    """Best-effort intent label for an inbox message."""
+def _keyword_label(text: str) -> str | None:
+    """Fast keyword label; None when no marker matches (caller decides on LLM)."""
     lowered = (text or "").lower()
     if any(w in lowered for w in ("price", "cost", "how much", "buy", "sign up", "discount", "$")):
         return "purchase_intent"
@@ -43,15 +43,31 @@ def label_message(text: str) -> str:
         return "support"
     if "?" in (text or "") or any(lowered.startswith(w) for w in ("where", "how", "what", "can you")):
         return "content_request"
+    return None
+
+
+def label_message(text: str, *, use_llm: bool = True) -> str:
+    """Best-effort intent label for an inbox message. use_llm=False stays keyword-only
+    (for list endpoints, to avoid a per-item network round-trip)."""
+    label = _keyword_label(text)
+    if label is not None:
+        return label
+    if not use_llm:
+        return "other"
     try:
         data = json.loads(get_llm().complete(LABEL_SYSTEM, text or "", json_output=True, max_tokens=80))
-        return data.get("label") if data.get("label") in LABELS else "other"
+        label = data.get("label") if isinstance(data, dict) else None
+        return label if label in LABELS else "other"
     except Exception:  # noqa: BLE001
         return "other"
 
 
 def labelled_inbox(session: Session, creator_id: str, limit: int = 50) -> list[dict]:
-    """One prioritised, labelled queue across question-comments and pending DM jobs."""
+    """One prioritised, labelled queue across question-comments and pending DM jobs.
+
+    Keyword-only labelling here (no per-item LLM call) to keep the list endpoint fast;
+    DM-job comments are batch-loaded in one query to avoid N+1.
+    """
     items: list[dict] = []
 
     comments = session.scalars(
@@ -59,7 +75,7 @@ def labelled_inbox(session: Session, creator_id: str, limit: int = 50) -> list[d
         .order_by(Comment.ingested_at.desc()).limit(limit)
     ).all()
     for c in comments:
-        label = label_message(c.text)
+        label = label_message(c.text, use_llm=False)
         items.append({"kind": "comment", "id": c.id, "text": c.text, "label": label,
                       "priority": PRIORITY.get(label, 4), "post_id": c.post_id})
 
@@ -68,9 +84,15 @@ def labelled_inbox(session: Session, creator_id: str, limit: int = 50) -> list[d
                             DmJob.status == DmStatus.pending_approval)
         .order_by(DmJob.created_at.desc()).limit(limit)
     ).all()
+    # batch-load the jobs' comments in one query (avoid N+1)
+    comment_ids = [j.comment_id for j in jobs if j.comment_id]
+    by_id = {}
+    if comment_ids:
+        by_id = {c.id: c for c in session.scalars(
+            select(Comment).where(Comment.id.in_(comment_ids)))}
     for j in jobs:
-        comment = session.get(Comment, j.comment_id)
-        label = label_message(comment.text if comment else "")
+        comment = by_id.get(j.comment_id) if j.comment_id else None
+        label = label_message(comment.text if comment else "", use_llm=False)
         items.append({"kind": "dm_job", "id": j.id,
                       "text": comment.text if comment else None, "label": label,
                       "priority": PRIORITY.get(label, 4), "deep_link": j.deep_link})

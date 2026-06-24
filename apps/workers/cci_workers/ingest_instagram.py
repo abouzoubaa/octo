@@ -16,6 +16,7 @@ from cci_core.instagram import InstagramClient
 from cci_core.models import Comment, Creator, MediaAsset, OAuthToken, Post, PostStatus
 from cci_core.privacy import pseudonymize
 from cci_core.storage import ensure_bucket, store_media_from_url
+from cci_agent.intelligence import score_sentiment
 from cci_retrieval.intent import INTENT_QUESTION, detect_intent
 
 log = logging.getLogger(__name__)
@@ -163,12 +164,9 @@ def _upsert_comment(session: Session, creator: Creator, post: Post, item: dict) 
     text = item.get("text", "")
     intent = detect_intent(text)
     is_question = intent.intent == INTENT_QUESTION
-    # agent layer: read emotional tenor on question-comments (sentiment intelligence)
-    sentiment = None
-    if is_question:
-        from cci_agent.intelligence import score_sentiment
-
-        sentiment = score_sentiment(text)
+    # agent layer: read emotional tenor on question-comments (keyword-only here to
+    # keep backfill fast — no per-comment LLM call; richer reads happen on demand)
+    sentiment = score_sentiment(text, use_llm=False) if is_question else None
     session.add(
         Comment(
             creator_id=creator.id,

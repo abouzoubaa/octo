@@ -6,6 +6,7 @@ behaviour, only record the data the agent learns from.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -36,8 +37,10 @@ class InvalidTransition(ValueError):
 def transition_demand(session: Session, topic: DemandTopic, to: DemandState,
                       *, published_post_id: str | None = None) -> DemandTopic:
     """Move a demand item to a new lifecycle state, enforcing valid transitions."""
+    if to == topic.state:
+        return topic  # self-transition is a no-op; don't re-stamp timestamps/marks
     allowed = DEMAND_TRANSITIONS.get(topic.state, set())
-    if to != topic.state and to not in allowed:
+    if to not in allowed:
         raise InvalidTransition(f"{topic.state.value} → {to.value} is not allowed")
     topic.state = to
     topic.state_updated_at = utcnow()
@@ -178,13 +181,22 @@ def get_rules(session: Session, creator_id: str) -> CreatorRules:
     return rules
 
 
+def _mentions_topic(text: str, topics: list[str] | None) -> bool:
+    """Whole-word topic match — avoids substring false positives ('ai' in 'rain',
+    'med' in 'medium') and ignores empty/blank topic strings."""
+    blob = (text or "").lower()
+    for topic in topics or []:
+        t = topic.strip().lower()
+        if t and re.search(rf"(?<!\w){re.escape(t)}(?!\w)", blob):
+            return True
+    return False
+
+
 def is_taboo(rules: CreatorRules, text: str) -> bool:
     """Does this text touch a taboo topic the agent must never engage?"""
-    blob = (text or "").lower()
-    return any(t.lower() in blob for t in (rules.taboo_topics or []))
+    return _mentions_topic(text, rules.taboo_topics)
 
 
 def must_escalate(rules: CreatorRules, text: str) -> bool:
     """Does this text touch a topic that must always go to human review?"""
-    blob = (text or "").lower()
-    return any(t.lower() in blob for t in (rules.escalate_topics or []))
+    return _mentions_topic(text, rules.escalate_topics)

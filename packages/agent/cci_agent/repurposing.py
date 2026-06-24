@@ -47,17 +47,30 @@ def repurpose(session: Session, post_id: str, target_format: str) -> dict:
     return data
 
 
-def sift_and_shift(session: Session, creator_id: str, target_format: str = "ig_carousel") -> list[dict]:
-    """Find YouTube-only topics and draft them for Instagram from the transcript —
-    a content-migration opportunity (topic covered on one platform, not the other)."""
+def sift_and_shift(session: Session, creator_id: str, target_format: str = "ig_carousel",
+                   *, limit: int = 5) -> list[dict]:
+    """Find YouTube topics NOT already covered on Instagram and draft them for IG from
+    the transcript — a content-migration opportunity. Capped to `limit` posts to bound
+    LLM cost (one generation per migrated post)."""
     yt_posts = session.scalars(
         select(Post).where(Post.creator_id == creator_id, Post.platform == "youtube")
     ).all()
+    # cheap "already on IG?" check: lexical overlap of the YT title against IG captions
+    ig_text = " ".join(
+        (c or "").lower() for c in session.scalars(
+            select(Post.caption).where(Post.creator_id == creator_id,
+                                       Post.platform == "instagram"))
+    )
     drafts = []
     for post in yt_posts:
+        if len(drafts) >= limit:
+            break
         transcript = session.scalar(select(Transcript).where(Transcript.post_id == post.id))
         if transcript is None:
             continue
+        title_words = {w for w in (post.caption or "").lower().split() if len(w) > 5}
+        if title_words and sum(1 for w in title_words if w in ig_text) / len(title_words) > 0.5:
+            continue  # topic already well covered on Instagram — skip migration
         adapted = repurpose(session, post.id, target_format)
         adapted["migrated_from"] = "youtube"
         drafts.append(adapted)

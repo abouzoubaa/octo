@@ -27,7 +27,8 @@ def require_api_key(authorization: str = Header(default=""),
 
 
 def _scoped(record: ApiKey, scope: str) -> None:
-    if record.scopes and scope not in record.scopes:
+    # fail closed: a key with no scopes grants nothing (not everything)
+    if not record.scopes or scope not in record.scopes:
         raise HTTPException(status_code=403, detail=f"key missing scope '{scope}'")
 
 

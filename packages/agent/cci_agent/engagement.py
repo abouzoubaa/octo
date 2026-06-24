@@ -149,7 +149,7 @@ def close_loop(session: Session, topic: DemandTopic, creator_handle: str) -> lis
     s = get_settings()
     window = timedelta(days=s.dm_reply_window_days)
     now = utcnow()
-    created: list[str] = []
+    new_jobs: list[DmJob] = []
 
     for comment_id in (topic.asker_comment_ids or []):
         comment = session.get(Comment, comment_id)
@@ -172,17 +172,17 @@ def close_loop(session: Session, topic: DemandTopic, creator_handle: str) -> lis
             deep_link=link,
         )
         session.add(job)
-        created.append(comment.id)
+        new_jobs.append(job)
 
     if topic.state == DemandState.published:
-        from cci_core.agent_foundations import transition_demand
+        from cci_core.agent_foundations import InvalidTransition, transition_demand
 
         try:
             transition_demand(session, topic, DemandState.loop_closed)
-        except Exception:  # noqa: BLE001
-            pass
-    session.flush()
-    return created
+        except InvalidTransition:
+            pass  # state pre-checked; only a genuine bad transition lands here
+    session.flush()  # flush so the jobs have ids before we return them
+    return [j.id for j in new_jobs]
 
 
 # ------------------------------------------------------------- 'not now' queue
