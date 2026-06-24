@@ -160,17 +160,26 @@ def _upsert_comment(session: Session, creator: Creator, post: Post, item: dict) 
     if existing is not None:
         return False
     author = (item.get("from") or {}).get("id", "anonymous")
-    intent = detect_intent(item.get("text", ""))
+    text = item.get("text", "")
+    intent = detect_intent(text)
+    is_question = intent.intent == INTENT_QUESTION
+    # agent layer: read emotional tenor on question-comments (sentiment intelligence)
+    sentiment = None
+    if is_question:
+        from cci_agent.intelligence import score_sentiment
+
+        sentiment = score_sentiment(text)
     session.add(
         Comment(
             creator_id=creator.id,
             post_id=post.id,
             external_id=item["id"],
             author_pseudonym=pseudonymize(author, creator.id),
-            text=item.get("text", ""),
+            text=text,
             created_at=InstagramClient.parse_ts(item["timestamp"]) if item.get("timestamp") else None,
-            is_question=intent.intent == INTENT_QUESTION,
+            is_question=is_question,
             intent=intent.intent,
+            sentiment=sentiment,
         )
     )
     return True

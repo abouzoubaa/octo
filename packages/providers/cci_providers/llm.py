@@ -118,4 +118,35 @@ class FakeLLM(LLMProvider):
         if "cluster" in sys_l or "radar" in sys_l:
             return json.dumps({"label": user.splitlines()[0][:80] if user else "general",
                                "recommendation": "Make a post answering the most repeated question."})
+        # --- agent layer feature shapes (offline fakes) ---
+        first_line = (user.splitlines()[0][:120] if user else "")
+        if "content brief" in sys_l:
+            return json.dumps({"angle": first_line or "the core question",
+                               "audience_phrasing": [first_line] if first_line else [],
+                               "covers_gap": "the specific sub-question", "cta": "Follow for more"})
+        if "reel" in sys_l:
+            return json.dumps({"hooks": [first_line or "Here's what nobody tells you"],
+                               "script": user[:300], "caption": user[:200], "cta": "Save this"})
+        if "format" in sys_l:  # repurposing
+            return json.dumps({"format": "ig_carousel", "content": user[:400]})
+        if "series" in sys_l:
+            return json.dumps({"parts": ["Part 1: the basics", "Part 2: the mistakes"],
+                               "faq_post": "Top 5 questions answered",
+                               "dm_followup": "Want the checklist?", "offer_tie_in": ""})
+        if "strateg" in sys_l:
+            return json.dumps({"recommendation": "Double down on the highest-demand gap.",
+                               "rationale": "Demand is concentrated and under-served."})
+        if "clarifying" in sys_l:
+            return json.dumps({"question": "Which did you mean?", "options": ["A", "B"]})
+        if "inbox message" in sys_l:
+            return json.dumps({"label": "content_request", "priority_reason": "asks for a post"})
+        if "emotional tenor" in sys_l or "emotion" in sys_l:
+            return json.dumps({"emotion": "neutral"})
+        if "audience segment" in sys_l:
+            return json.dumps({"name": first_line[:40] or "audience segment"})
+        if "sponsorship pitch" in sys_l:
+            return json.dumps({"pitch": "Your audience is actively asking about this — "
+                                        "partner with us to answer them."})
+        if "voice" in sys_l:
+            return json.dumps({"score": 80, "deviations": []})
         return json.dumps({"result": user[:100]})

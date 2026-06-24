@@ -229,6 +229,7 @@ class Comment(Base):
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_question: Mapped[bool] = mapped_column(Boolean, default=False)
     intent: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sentiment: Mapped[str | None] = mapped_column(String(16), nullable=True)  # v2: anxiety|confusion|...
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -290,8 +291,10 @@ class DmJob(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
-    comment_id: Mapped[str] = mapped_column(
-        ForeignKey("comments.id", ondelete="CASCADE"), unique=True  # one reply per comment
+    # one creator-initiated reply per comment (unique); NULL for agentic follow-up
+    # turns, which are re-opened by the fan's reply, not creator-initiated
+    comment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("comments.id", ondelete="CASCADE"), unique=True, nullable=True
     )
     status: Mapped[DmStatus] = mapped_column(
         Enum(DmStatus, native_enum=False), default=DmStatus.pending_approval
@@ -304,6 +307,9 @@ class DmJob(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # agentic DM (v2): multi-turn threading within Meta's one-message/7-day window
+    parent_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    turn: Mapped[int] = mapped_column(Integer, default=0)
 
 
 # ------------------------------------------------------------------- Demand Radar
@@ -591,4 +597,43 @@ class Playbook(Base):
     public_reply_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     dm_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# =====================================================================================
+# AGENT LAYER — v2 "agent" features (engagement, intelligence, cross-platform)
+# =====================================================================================
+
+
+class DeferredItem(Base):
+    """'Not now, but…' queue: a valid question the creator defers ('remind me in 6
+    weeks — launching then'). Sift holds it, drafts when the time comes, and can
+    re-contact the asker within compliant limits."""
+
+    __tablename__ = "deferred_items"
+    __table_args__ = (Index("ix_deferred_creator_due", "creator_id", "remind_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    question: Mapped[str] = mapped_column(Text)
+    comment_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    demand_topic_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    remind_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), default="waiting")  # waiting|surfaced|done
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ExternalSignal(Base):
+    """Cross-platform demand synthesis (v2): questions from beyond Instagram —
+    newsletter replies (a BCC address), forwarded DMs, transcribed podcast comments.
+    Topic-level only; never individual cross-platform identity matching (GDPR)."""
+
+    __tablename__ = "external_signals"
+    __table_args__ = (Index("ix_external_signals_creator_platform", "creator_id", "platform"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    platform: Mapped[str] = mapped_column(String(24))  # newsletter | podcast | youtube | dm_forward
+    text: Mapped[str] = mapped_column(Text)
+    is_question: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

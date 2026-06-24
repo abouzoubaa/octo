@@ -300,3 +300,173 @@ def list_playbooks(creator_id: str, db: Session = Depends(get_db)) -> list[dict]
     rows = db.scalars(select(Playbook).where(Playbook.creator_id == creator_id)).all()
     return [{"id": p.id, "name": p.name, "trigger_keywords": p.trigger_keywords,
              "intent": p.intent, "active": p.active} for p in rows]
+
+
+# ============================================================ v2 agent features
+
+
+# ---------------------------------------------------------------- engagement
+
+
+class BulkApproveIn(BaseModel):
+    job_ids: list[str]
+
+
+@router.post("/creators/{creator_id}/dm/bulk-approve")
+def dm_bulk_approve(creator_id: str, body: BulkApproveIn, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.engagement import bulk_approve
+
+    return {"approved": bulk_approve(db, creator_id, body.job_ids)}
+
+
+@router.post("/demand/{topic_id}/close-loop")
+def close_loop_endpoint(topic_id: str, db: Session = Depends(get_db)) -> dict:
+    """Loop-Closer: notify the original askers (approval-mode DMs, 7-day window)."""
+    from cci_agent.engagement import close_loop
+    from cci_core.models import Creator
+
+    topic = db.get(DemandTopic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail="demand topic not found")
+    creator = db.get(Creator, topic.creator_id)
+    created = close_loop(db, topic, creator.handle)
+    return {"notified": len(created), "state": topic.state.value}
+
+
+class DeferIn(BaseModel):
+    question: str
+    weeks: int = 6
+    comment_id: str | None = None
+    demand_topic_id: str | None = None
+
+
+@router.post("/creators/{creator_id}/defer")
+def defer(creator_id: str, body: DeferIn, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.engagement import defer_question
+
+    item = defer_question(db, creator_id, body.question, weeks=body.weeks,
+                          comment_id=body.comment_id, demand_topic_id=body.demand_topic_id)
+    return {"id": item.id, "remind_at": item.remind_at.isoformat()}
+
+
+@router.get("/creators/{creator_id}/deferrals/due")
+def deferrals_due(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    from cci_agent.engagement import due_deferrals
+
+    return [{"id": d.id, "question": d.question, "remind_at": d.remind_at.isoformat()}
+            for d in due_deferrals(db, creator_id)]
+
+
+# ---------------------------------------------------------------- intelligence
+
+
+@router.get("/creators/{creator_id}/personas")
+def personas(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    from cci_agent.intelligence import segment_personas
+
+    return segment_personas(db, creator_id)
+
+
+@router.get("/creators/{creator_id}/sentiment")
+def sentiment(creator_id: str, days: int = 30, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.intelligence import sentiment_summary
+
+    return sentiment_summary(db, creator_id, days)
+
+
+@router.get("/creators/{creator_id}/trends")
+def trends(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    from cci_agent.intelligence import detect_trends
+
+    return detect_trends(db, creator_id)
+
+
+class StrategyIn(BaseModel):
+    question: str
+
+
+@router.post("/creators/{creator_id}/strategy")
+def strategy(creator_id: str, body: StrategyIn, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.intelligence import strategy_advisor
+
+    return strategy_advisor(db, creator_id, body.question)
+
+
+class ExternalSignalIn(BaseModel):
+    platform: str  # newsletter | podcast | youtube | dm_forward
+    text: str
+    is_question: bool = True
+
+
+@router.post("/creators/{creator_id}/external-signal")
+def add_external_signal(creator_id: str, body: ExternalSignalIn,
+                        db: Session = Depends(get_db)) -> dict:
+    """Cross-platform demand intake (newsletter BCC, podcast comments, forwarded DMs)."""
+    from cci_core.models import ExternalSignal
+
+    sig = ExternalSignal(creator_id=creator_id, **body.model_dump())
+    db.add(sig)
+    db.flush()
+    return {"id": sig.id}
+
+
+# ---------------------------------------------------------------- repurposing
+
+
+@router.post("/posts/{post_id}/repurpose")
+def repurpose_post(post_id: str, target_format: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.repurposing import repurpose
+
+    try:
+        return repurpose(db, post_id, target_format)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/demand/{topic_id}/series")
+def series(topic_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.repurposing import build_series
+
+    topic = db.get(DemandTopic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail="demand topic not found")
+    return build_series(db, topic.creator_id, topic)
+
+
+# ---------------------------------------------------------------- revenue
+
+
+@router.get("/creators/{creator_id}/sponsor-report")
+def sponsor_report_endpoint(creator_id: str, topic: str | None = None,
+                            db: Session = Depends(get_db)) -> dict:
+    from cci_agent.revenue import sponsor_report
+
+    return sponsor_report(db, creator_id, topic)
+
+
+@router.get("/creators/{creator_id}/affiliate-optimisation")
+def affiliate_opt(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    from cci_agent.revenue import affiliate_optimisation
+
+    return affiliate_optimisation(db, creator_id)
+
+
+# ---------------------------------------------------------------- brand
+
+
+@router.get("/creators/{creator_id}/crisis-check")
+def crisis_check(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.brand import detect_crisis
+
+    return detect_crisis(db, creator_id)
+
+
+class VoiceScoreIn(BaseModel):
+    text: str
+
+
+@router.post("/creators/{creator_id}/voice-score")
+def voice_score(creator_id: str, body: VoiceScoreIn, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.brand import voice_consistency_score
+
+    return voice_consistency_score(db, creator_id, body.text)
