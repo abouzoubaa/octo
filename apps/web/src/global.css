@@ -331,6 +331,39 @@ body {
   color: var(--accent);
 }
 
+/* ----------------------------------------------------------- studio dashboard */
+
+.studio-nav { display: flex; gap: 8px; margin-bottom: 16px; }
+.studio-nav-item {
+  flex: 1; text-align: center; text-decoration: none;
+  color: var(--ink-strong); font-weight: 650; font-size: 14px;
+  padding: 12px; border-radius: 16px;
+}
+
+.stat-row { display: flex; gap: 8px; margin-bottom: 18px; }
+.stat {
+  flex: 1; border-radius: 16px; padding: 12px;
+  display: flex; flex-direction: column; align-items: center;
+}
+.stat-n { font-size: 22px; font-weight: 800; color: var(--accent); letter-spacing: -0.02em; }
+.stat-l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
+.actions form { margin: 0; }
+.pill-btn {
+  background: linear-gradient(160deg, var(--accent-2) 0%, var(--accent) 90%);
+  color: var(--accent-ink); border: 0;
+  padding: 7px 14px; border-radius: 999px;
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 3px 10px var(--accent-soft);
+  transition: transform 0.18s cubic-bezier(0.3, 1.4, 0.6, 1);
+}
+.pill-btn:active { transform: scale(0.93); }
+.pill-btn.ghost {
+  background: var(--accent-soft); color: var(--accent);
+  box-shadow: none;
+}
+
 /* --------------------------------------------------------- accessibility */
 
 @media (prefers-reduced-motion: reduce) {

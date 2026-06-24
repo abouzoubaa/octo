@@ -1,0 +1,174 @@
+import { component$ } from "@builder.io/qwik";
+import {
+  routeLoader$,
+  routeAction$,
+  Form,
+  Link,
+  type DocumentHead,
+} from "@builder.io/qwik-city";
+import { adminGet, adminPost, type DemandCard } from "~/lib/admin-api";
+
+interface Briefing {
+  week: string;
+  creator: string;
+  top_demand: {
+    topic_id: string;
+    label: string;
+    signal: { searches: number; comments: number; wow_change: number | null };
+    hook: string | null;
+    state: string;
+  }[];
+  open_gaps: { label: string; demand: number }[];
+  repromote: { label: string; permalink: string | null; why: string } | null;
+  drafted_post: { draft_id: string; title: string; hooks: string[] | null } | null;
+}
+
+export const useOverview = routeLoader$(async ({ params }) => {
+  const cid = params.creatorId;
+  const [creators, radar, briefing, metrics] = await Promise.all([
+    adminGet<{ id: string; handle: string }[]>("/admin/creators"),
+    adminGet<DemandCard[]>(`/admin/creators/${cid}/radar`),
+    adminGet<Briefing>(`/agent/creators/${cid}/briefing?with_draft=false`),
+    adminGet<Record<string, unknown>>(`/admin/creators/${cid}/metrics`),
+  ]);
+  const creator = (creators ?? []).find((c) => c.id === cid);
+  return { cid, handle: creator?.handle ?? cid, radar: radar ?? [], briefing, metrics };
+});
+
+// Move a demand card through its lifecycle (idea → drafting → published → …)
+export const useTransition = routeAction$(async (data) => {
+  const res = await adminPost(`/agent/demand/${data.topicId}/transition`, { to: data.to });
+  return { ok: res !== null };
+});
+
+// Generate a grounded draft from a demand card
+export const useDraft = routeAction$(async (data) => {
+  const res = await adminPost<{ draft_id: string }>(`/agent/demand/${data.topicId}/draft`);
+  return { ok: res !== null, draftId: res?.draft_id };
+});
+
+const NEXT_STATE: Record<string, string | null> = {
+  new: "idea",
+  idea: "drafting",
+  drafting: "published",
+  published: "loop_closed",
+  loop_closed: null,
+  dismissed: "idea",
+};
+
+export default component$(() => {
+  const o = useOverview();
+  const transition = useTransition();
+  const draft = useDraft();
+  const m = (o.value.metrics ?? {}) as any;
+
+  return (
+    <>
+      <header class="topbar">
+        <div class="identity">
+          <div class="avatar">{o.value.handle.charAt(0).toUpperCase()}</div>
+          <div>
+            <h1>@{o.value.handle}</h1>
+            <p>Sift Studio</p>
+          </div>
+        </div>
+        <Link class="theme-toggle glass" href="/studio" aria-label="Back">
+          ←
+        </Link>
+      </header>
+
+      <nav class="studio-nav">
+        <Link href={`/studio/${o.value.cid}/inbox`} class="studio-nav-item glass">
+          📨 Approval inbox
+        </Link>
+        <Link href={`/studio/${o.value.cid}/drafts`} class="studio-nav-item glass">
+          ✍️ Drafts
+        </Link>
+      </nav>
+
+      {m?.audience && (
+        <section class="stat-row">
+          <div class="stat glass">
+            <span class="stat-n">{m.audience.searches ?? 0}</span>
+            <span class="stat-l">searches</span>
+          </div>
+          <div class="stat glass">
+            <span class="stat-n">{m.corpus?.question_comments_total ?? 0}</span>
+            <span class="stat-l">questions</span>
+          </div>
+          <div class="stat glass">
+            <span class="stat-n">{m.dm?.sent ?? 0}</span>
+            <span class="stat-l">DMs sent</span>
+          </div>
+        </section>
+      )}
+
+      {o.value.briefing && (
+        <section class="answer-card glass">
+          <div class="label">
+            <span class="dot" />
+            This week's briefing
+          </div>
+          {o.value.briefing.open_gaps.length > 0 && (
+            <p class="answer-text">
+              Top open gap: <strong>{o.value.briefing.open_gaps[0].label}</strong> (
+              {o.value.briefing.open_gaps[0].demand} asking)
+            </p>
+          )}
+          {o.value.briefing.repromote && (
+            <p class="evidence">♻️ Re-promote: {o.value.briefing.repromote.label}</p>
+          )}
+        </section>
+      )}
+
+      <p class="results-label">Demand pipeline</p>
+      {o.value.radar.length === 0 && (
+        <div class="empty-state glass">No demand cards yet — run Radar to populate.</div>
+      )}
+      {o.value.radar.map((c) => (
+        <div class="result glass" key={c.id}>
+          <div class="meta">
+            <span class="type">{c.state}</span>
+            <span class="date">
+              {c.search_count + c.comment_count} signal
+              {c.coverage?.gap ? " · gap" : ""}
+            </span>
+          </div>
+          <p class="caption">{c.label}</p>
+          {c.recommendation && <p class="evidence">{c.recommendation}</p>}
+          <div class="actions">
+            {NEXT_STATE[c.state] && (
+              <Form action={transition}>
+                <input type="hidden" name="topicId" value={c.id} />
+                <input type="hidden" name="to" value={NEXT_STATE[c.state]!} />
+                <button class="pill-btn" type="submit">
+                  → {NEXT_STATE[c.state]}
+                </button>
+              </Form>
+            )}
+            <Form action={draft}>
+              <input type="hidden" name="topicId" value={c.id} />
+              <button class="pill-btn ghost" type="submit">
+                ✍️ Draft
+              </button>
+            </Form>
+            {c.state !== "dismissed" && (
+              <Form action={transition}>
+                <input type="hidden" name="topicId" value={c.id} />
+                <input type="hidden" name="to" value="dismissed" />
+                <button class="pill-btn ghost" type="submit">
+                  Dismiss
+                </button>
+              </Form>
+            )}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+});
+
+export const head: DocumentHead = ({ resolveValue }) => {
+  const o = resolveValue(useOverview);
+  return { title: `@${o.handle} — Sift Studio` };
+};
