@@ -8,17 +8,27 @@ import {
   type ShiftOpportunity,
 } from "~/lib/admin-api";
 
-export const useCrossPlatform = routeLoader$(async ({ params }) => {
+export const useCrossPlatform = routeLoader$(async ({ params, query }) => {
   const cid = params.creatorId;
-  const [allPlatforms, connected, canonical, shift] = await Promise.all([
-    adminGet<ConnectorRow[]>("/admin/platforms"),
+  const allPlatforms = (await adminGet<ConnectorRow[]>("/admin/platforms")) ?? [];
+  // Shift targets are platforms that host publishable content (not pure demand
+  // sources like a newsletter or Discord). content.read == "hosts content".
+  const targets = allPlatforms
+    .filter((p) => p.capabilities.includes("content.read"))
+    .map((p) => p.platform);
+  const target = targets.includes(query.get("to") ?? "") ? query.get("to")! : (targets[0] ?? "tiktok");
+  const [connected, canonical, shift] = await Promise.all([
     adminGet<ConnectorRow[]>(`/admin/creators/${cid}/connectors`),
     adminGet<CanonicalRow[]>(`/agent/creators/${cid}/canonical`),
-    adminGet<ShiftOpportunity[]>(`/agent/creators/${cid}/sift-and-shift?target_platform=tiktok`),
+    adminGet<ShiftOpportunity[]>(
+      `/agent/creators/${cid}/sift-and-shift?target_platform=${target}`,
+    ),
   ]);
   return {
     cid,
-    allPlatforms: allPlatforms ?? [],
+    allPlatforms,
+    targets,
+    target,
     connected: new Set((connected ?? []).map((c) => c.platform)),
     canonical: canonical ?? [],
     shift: shift ?? [],
@@ -113,11 +123,23 @@ export default component$(() => {
       ))}
 
       <p class="results-label" style="margin-top:18px;">
-        Sift &amp; Shift → TikTok
+        Sift &amp; Shift → {ICON[data.value.target] ?? ""} {data.value.target}
       </p>
+      <div class="actions" style="margin-bottom:10px;">
+        {data.value.targets.map((t) => (
+          <Link
+            key={t}
+            href={`?to=${t}`}
+            class={`pill-btn ${t === data.value.target ? "" : "ghost"}`}
+          >
+            {ICON[t] ?? "🔌"} {t}
+          </Link>
+        ))}
+      </div>
       {data.value.shift.length === 0 && (
         <div class="empty-state glass">
-          No migration opportunities — answers are already on TikTok, or none grouped yet.
+          No migration opportunities — answers are already on {data.value.target}, or none grouped
+          yet.
         </div>
       )}
       {data.value.shift.map((o) => (

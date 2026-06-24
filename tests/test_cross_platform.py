@@ -132,6 +132,18 @@ def test_sift_and_shift_finds_missing_platform(creator, session):
     assert saved.brief["target_platform"] == "tiktok"
 
 
+def test_sift_and_shift_target_is_configurable(creator, session):
+    # the same workflow works for any target platform, not just TikTok
+    tt = Post(creator_id=creator.id, platform="tiktok", external_id="tt-only",
+              type="video", caption="best lightweight tripod for travel vlogging")
+    session.add(tt)
+    session.flush()
+    group_variants(session, creator.id)
+    opps = sift_and_shift_opportunities(session, creator.id, target_platform="instagram")
+    assert opps and opps[0]["target_platform"] == "instagram"
+    assert opps[0]["source_platform"] == "tiktok"
+
+
 def test_sift_and_shift_skips_already_covered(creator, session):
     # an answer already on TikTok → not an opportunity to shift TO TikTok
     tt = Post(creator_id=creator.id, platform="tiktok", external_id="tt-cov",
