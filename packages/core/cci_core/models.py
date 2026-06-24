@@ -113,6 +113,8 @@ class Post(Base):
     status: Mapped[PostStatus] = mapped_column(
         Enum(PostStatus, native_enum=False), default=PostStatus.active
     )
+    language: Mapped[str | None] = mapped_column(String(8), nullable=True)  # detected ISO code
+    impressions: Mapped[int | None] = mapped_column(Integer, nullable=True)  # from IG insights (optional)
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     # per-post comment-sync watermark (comment reads are cursor-paginated, no time filter)
     comment_sync_cursor: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -372,6 +374,11 @@ class DemandTopic(Base):
     persistence_weeks: Mapped[int] = mapped_column(Integer, default=1)  # weeks seen
     dominant_sentiment: Mapped[str | None] = mapped_column(String(16), nullable=True)
     intent_class: Mapped[str | None] = mapped_column(String(16), nullable=True)  # purchase|learning|support|other
+    # manipulation risk: how inflatable is this demand? (prompted/duplicate/concentrated)
+    manipulation_risk: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0..1
+    duplication_rate: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0..1
+    # exposure-normalized organic demand (asks per 1k impressions); None without insights
+    demand_per_1k_impressions: Mapped[float | None] = mapped_column(Float, nullable=True)
     # --- explainable Opportunity Score (components exposed, not a black box) ---
     opportunity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     opportunity_components: Mapped[dict | None] = mapped_column(JSON, nullable=True)

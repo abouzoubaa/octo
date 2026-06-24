@@ -69,6 +69,20 @@ def compute_integrity(session: Session, creator_id: str, cluster: list[tuple],
             DemandTopic.week != week)
     ) or 0
 
+    # --- manipulation risk: how inflatable is this demand signal? ---
+    n_comments = len(comments)
+    # duplicate near-identical comments (bot/copy farming)
+    normalized = [" ".join(c.text.lower().split()) for c in comments if c.text]
+    duplication_rate = (1.0 - len(set(normalized)) / len(normalized)) if normalized else 0.0
+    # author concentration: a few people producing many comments
+    concentration = (1.0 - len(pseudonyms) / n_comments) if n_comments else 0.0
+    prompted_share = (prompted / n_comments) if n_comments else 0.0
+    manipulation_risk = round(min(
+        0.4 * prompted_share + 0.3 * duplication_rate + 0.3 * concentration, 1.0), 3)
+
+    # --- exposure-normalized organic demand (asks per 1k impressions) ---
+    demand_per_1k = _exposure_normalized(session, organic, cluster)
+
     return {
         "unique_askers": unique_askers,
         "organic_count": organic,
@@ -76,7 +90,29 @@ def compute_integrity(session: Session, creator_id: str, cluster: list[tuple],
         "persistence_weeks": prior_weeks + 1,
         "dominant_sentiment": dominant_sentiment,
         "intent_class": intent_class,
+        "manipulation_risk": manipulation_risk,
+        "duplication_rate": round(duplication_rate, 3),
+        "demand_per_1k_impressions": demand_per_1k,
     }
+
+
+def _exposure_normalized(session: Session, organic: int, cluster: list[tuple]) -> float | None:
+    """Organic asks per 1,000 impressions of the posts that drove them. Needs the
+    IG insights API (Post.impressions); returns None when impression data is absent,
+    so demand is never over- or under-credited by reach we can't see."""
+    from cci_core.models import Comment, Post
+
+    comment_ids = [s[2] for s in cluster if s[0] == "comment" and s[2]]
+    if not comment_ids:
+        return None
+    post_ids = set(session.scalars(
+        select(Comment.post_id).where(Comment.id.in_(comment_ids))))
+    impressions = session.scalar(
+        select(func.sum(Post.impressions)).where(
+            Post.id.in_([p for p in post_ids if p]), Post.impressions.isnot(None)))
+    if not impressions:
+        return None
+    return round(organic / impressions * 1000.0, 3)
 
 
 # ------------------------------------------------------------- opportunity score
@@ -188,6 +224,9 @@ def demand_certificate(session: Session, topic: DemandTopic) -> dict:
         + min(topic.persistence_weeks / 4.0, 1.0) * 0.3
         + (1.0 - prompted_share) * 0.3
     )
+    # confidence is further discounted by manipulation risk — brands shouldn't pay
+    # for inflatable demand
+    confidence *= (1.0 - 0.5 * (topic.manipulation_risk or 0.0))
     return {
         "topic": topic.label,
         "week": topic.week,
@@ -200,6 +239,9 @@ def demand_certificate(session: Session, topic: DemandTopic) -> dict:
         "dominant_sentiment": topic.dominant_sentiment,
         "coverage_gap": bool((topic.coverage or {}).get("gap")),
         "opportunity_score": topic.opportunity_score,
+        "manipulation_risk": topic.manipulation_risk,
+        "duplication_rate": topic.duplication_rate,
+        "demand_per_1k_impressions": topic.demand_per_1k_impressions,
         "confidence": round(confidence, 3),
         "issued_for": "brand comparison — aggregate, pseudonymous, no audience identities",
     }
