@@ -229,6 +229,41 @@ interleave: productionize enough to run one creator, then layer capability.
 
 ---
 
+## Part 7 — When to introduce Rust (backend language strategy)
+
+The v1 spec prescribed **Python (FastAPI) + RQ/Celery primary, with Rust (Axum)
+for hot paths "when latency and cost demand it."** The build is Python today —
+correctly, because at POC scale nothing yet demands Rust. This section records
+the deliberate decision and the trigger to revisit, so it isn't relitigated.
+
+**Why Python now:** the app is **I/O-bound, not CPU-bound**. A search-with-answer
+request is dominated by the LLM call (~0.5–2 s) plus network embedding and
+Postgres queries; the web-framework overhead is ~1 ms. Rewriting in Rust would
+change end-to-end latency by **well under 1%** while costing a ~5k-line rewrite
+and slowing iteration during the prove-the-bet phase. The heavy CPU work
+(Whisper, OCR, embeddings, LLM SDKs) also lives in the Python ML ecosystem, so
+the AI pipeline stays Python regardless — a "Rust backend" really means a
+**Python + Rust hybrid**, exactly as the spec described.
+
+**Where Rust genuinely helps — later, at multi-creator scale:**
+- The **webhook ingestion path** under burst load (a viral post flooding comments) — higher throughput, lower tail latency.
+- The **search-serving endpoint** at high concurrency — less memory/CPU per request → fewer, cheaper servers.
+- **Cost at scale**, not speed-per-request — the real Rust win.
+
+**The trigger (measurement, not a date):** introduce Rust for a specific path
+only when monitoring shows that path under real latency/cost pressure — e.g.
+webhook p99 latency breaching target under burst, or search-serving CPU/memory
+driving server count and cost. The architecture is already service-split
+(`apps/api`, `apps/workers`) behind one Postgres, so a single endpoint (the
+webhook receiver or the search route) can be ported to Axum **without touching
+the AI pipeline**. Port the one hot path the data points to; leave the rest.
+
+Until that signal appears, Rust is premature optimization. *Revisit at the v2
+"agent" phase when traffic and cost data exist, or sooner if load testing
+(§2.3) surfaces a bottleneck.*
+
+---
+
 ## How the docs fit together
 
 - **`IMPLEMENTATION_PLAN.md`** — the v1 technical plan (what got built).
