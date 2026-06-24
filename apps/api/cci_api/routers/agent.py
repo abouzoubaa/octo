@@ -156,6 +156,40 @@ class RulesIn(BaseModel):
     auto_approve_types: list[str] | None = None
 
 
+@router.get("/creators/{creator_id}/permissions")
+def read_permissions(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    """The trust-calibrated permission ladder per action, + pause state."""
+    from cci_agent.permissions import permission_summary
+
+    return permission_summary(db, creator_id)
+
+
+class PermissionIn(BaseModel):
+    action: str
+    level: str  # recommend | draft | batch | auto
+
+
+@router.put("/creators/{creator_id}/permissions")
+def set_permission_endpoint(creator_id: str, body: PermissionIn,
+                            db: Session = Depends(get_db)) -> dict:
+    from cci_agent.permissions import set_permission
+
+    try:
+        effective = set_permission(db, creator_id, body.action, body.level)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"action": body.action, "level": effective}  # may be clamped to the ceiling
+
+
+@router.post("/creators/{creator_id}/automation/pause")
+def pause_automation_endpoint(creator_id: str, paused: bool = True,
+                              db: Session = Depends(get_db)) -> dict:
+    from cci_agent.permissions import pause_automation
+
+    pause_automation(db, creator_id, paused=paused)
+    return {"automation_paused": paused}
+
+
 @router.get("/creators/{creator_id}/rules")
 def read_rules(creator_id: str, db: Session = Depends(get_db)) -> dict:
     r = get_rules(db, creator_id)

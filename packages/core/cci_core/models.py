@@ -549,6 +549,10 @@ class CreatorRules(Base):
     # v3 opt-ins (default off — aggregate/anonymised only when enabled)
     allow_benchmarking: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_competitor_radar: Mapped[bool] = mapped_column(Boolean, default=False)
+    # trust-calibrated permission ladder: {action_type: level} where level is
+    # recommend|draft|batch|auto. Defaults applied by risk in cci_agent.permissions.
+    action_permissions: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    automation_paused: Mapped[bool] = mapped_column(Boolean, default=False)  # anomaly kill-switch
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

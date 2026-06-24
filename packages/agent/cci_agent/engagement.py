@@ -92,12 +92,17 @@ def handle_dm_followup(session: Session, creator_id: str, creator_handle: str,
 
 
 def can_auto_approve(session: Session, creator_id: str, intent: str | None) -> bool:
-    """'Always approve this question type' — only if the creator opted that intent
-    in AND the citation gate has passed (checked by the dispatcher, not here)."""
+    """'Always approve this question type' — only if ALL hold: the creator opted the
+    intent in, the dm_reply permission is at 'auto', automation isn't paused, and the
+    citation gate has passed (checked by the dispatcher). Approval-by-default wins
+    on any doubt."""
+    from cci_agent.permissions import can_auto_execute
     from cci_core.agent_foundations import get_rules
 
     rules = get_rules(session, creator_id)
-    return bool(intent and intent in (rules.auto_approve_types or []))
+    if not (intent and intent in (rules.auto_approve_types or [])):
+        return False
+    return can_auto_execute(session, creator_id, "dm_reply")
 
 
 def bulk_approve(session: Session, creator_id: str, job_ids: list[str]) -> int:

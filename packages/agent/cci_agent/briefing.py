@@ -93,6 +93,11 @@ def build_briefing(session: Session, creator_id: str, *, with_draft: bool = True
         "archive_link": search_link(creator.handle),
     }
 
+    # originality mix: don't trap the creator in a purely reactive local maximum.
+    # Surface one ADJACENT exploration (a topic they cover that isn't in this week's
+    # demand) and one CONVICTION prompt (post what you care about, not just what's asked).
+    briefing["originality"] = _originality_mix(session, creator_id, cards)
+
     if with_draft and cards:
         # one fully-drafted post for the single highest-signal gap (or top card)
         target = next((c for c in cards
@@ -106,6 +111,33 @@ def build_briefing(session: Session, creator_id: str, *, with_draft: bool = True
             "hooks": draft.hooks, "script": draft.script, "cta": draft.cta,
         }
     return briefing
+
+
+def _originality_mix(session: Session, creator_id: str, cards: list) -> dict:
+    """An adjacent exploration + a conviction prompt — to preserve creator taste."""
+    from collections import Counter
+
+    from cci_core.models import Enrichment, Post
+
+    demand_labels = {(c.label or "").lower() for c in cards}
+    # adjacent: a topic the creator covers that the audience ISN'T currently asking about
+    rows = session.execute(
+        select(Enrichment.topics).join(Post, Post.id == Enrichment.post_id)
+        .where(Post.creator_id == creator_id, Post.status == "active")).all()
+    counts: Counter = Counter()
+    for (topics,) in rows:
+        for t in (topics or []):
+            counts[str(t).strip().lower()] += 1
+    adjacent = next((t for t, _ in counts.most_common()
+                     if t and not any(t in d or d in t for d in demand_labels)), None)
+    return {
+        "adjacent_exploration": (
+            {"topic": adjacent, "why": "you cover this but the audience isn't asking — "
+             "a chance to lead rather than react"} if adjacent else None),
+        "conviction_prompt": "Post one thing this week because YOU believe it matters — "
+                             "not because it was requested. Sift optimises the business; "
+                             "your taste is the product.",
+    }
 
 
 def render_briefing_text(briefing: dict) -> str:
