@@ -590,13 +590,30 @@ class ExternalSignalIn(BaseModel):
 @router.post("/creators/{creator_id}/external-signal")
 def add_external_signal(creator_id: str, body: ExternalSignalIn,
                         db: Session = Depends(get_db)) -> dict:
-    """Cross-platform demand intake (newsletter BCC, podcast comments, forwarded DMs)."""
-    from cci_core.models import ExternalSignal
+    """Cross-platform demand intake (newsletter BCC, podcast comments, forwarded DMs).
 
-    sig = ExternalSignal(creator_id=creator_id, **body.model_dump())
+    The platform must have the demand.read capability; the text is PII-redacted and
+    spam-filtered before storage, then feeds Demand Radar like any other ask."""
+    from cci_core.connectors import capabilities_for
+    from cci_core.connectors.base import DEMAND_READ
+    from cci_core.models import ExternalSignal
+    from cci_core.pii import redact_pii
+    from cci_retrieval.intent import detect_intent
+
+    if DEMAND_READ not in capabilities_for(body.platform):
+        raise HTTPException(status_code=422,
+                            detail=f"'{body.platform}' is not a demand source")
+    text = (redact_pii(body.text) or "").strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="empty text")
+    intent = detect_intent(text)
+    # spam never becomes demand; otherwise honour the caller's is_question hint
+    is_question = body.is_question and intent.intent != "spam"
+    sig = ExternalSignal(creator_id=creator_id, platform=body.platform, text=text,
+                         is_question=is_question)
     db.add(sig)
     db.flush()
-    return {"id": sig.id}
+    return {"id": sig.id, "is_question": is_question}
 
 
 # ---------------------------------------------------------------- repurposing

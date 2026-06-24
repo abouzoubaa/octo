@@ -15,6 +15,11 @@ from cci_core.connectors.base import (
     require,
     supports,
 )
+from cci_core.connectors.demand_sources import (
+    DiscordConnector,
+    NewsletterConnector,
+    PodcastConnector,
+)
 from cci_core.connectors.instagram import InstagramConnector
 from cci_core.connectors.tiktok import TikTokConnector
 from cci_core.connectors.youtube import YouTubeConnector
@@ -45,6 +50,9 @@ def capabilities_for(platform: str) -> set[str]:
 register(InstagramConnector)
 register(YouTubeConnector)
 register(TikTokConnector)
+register(NewsletterConnector)
+register(PodcastConnector)
+register(DiscordConnector)
 
 __all__ = [
     "Connector", "NormalizedContent", "NormalizedInteraction", "IngestMode",

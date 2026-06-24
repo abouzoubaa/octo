@@ -23,6 +23,7 @@ MEDIA_READ = "media.read"
 CAPTIONS_READ = "captions.read"
 COMMENTS_READ = "comments.read"
 MESSAGES_READ = "messages.read"
+DEMAND_READ = "demand.read"  # pure demand source (newsletter replies, forwarded asks)
 ANALYTICS_READ = "analytics.read"
 EVENTS_WEBHOOK = "events.webhook"
 COMMENTS_REPLY = "comments.reply"
@@ -31,7 +32,7 @@ CONTENT_PUBLISH = "content.publish"
 DELETIONS_RECEIVE = "deletions.receive"
 
 ALL_CAPABILITIES = (
-    CONTENT_READ, MEDIA_READ, CAPTIONS_READ, COMMENTS_READ, MESSAGES_READ,
+    CONTENT_READ, MEDIA_READ, CAPTIONS_READ, COMMENTS_READ, MESSAGES_READ, DEMAND_READ,
     ANALYTICS_READ, EVENTS_WEBHOOK, COMMENTS_REPLY, MESSAGES_SEND, CONTENT_PUBLISH,
     DELETIONS_RECEIVE,
 )

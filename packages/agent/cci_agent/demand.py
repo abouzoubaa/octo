@@ -39,15 +39,16 @@ def compute_integrity(session: Session, creator_id: str, cluster: list[tuple],
         comments = list(session.scalars(
             select(Comment).where(Comment.id.in_(comment_ids))))
 
-    # unique askers: distinct pseudonyms among comments (searches are anonymous, so
-    # they can't be deduped — counted separately as raw search volume).
+    # unique askers: distinct pseudonyms among comments (searches + external signals
+    # are anonymous, so they can't be deduped — counted as raw volume).
     pseudonyms = {c.author_pseudonym for c in comments if c.author_pseudonym}
     n_searches = sum(1 for s in cluster if s[0] == "search")
-    unique_askers = len(pseudonyms) + n_searches  # upper bound; comments deduped
+    n_external = sum(1 for s in cluster if str(s[0]).startswith("external:"))
+    unique_askers = len(pseudonyms) + n_searches + n_external  # upper bound; comments deduped
 
-    # organic vs CTA-prompted
+    # organic vs CTA-prompted (searches + external signals are organic by nature)
     prompted = sum(1 for c in comments if _looks_prompted(c.text))
-    organic = (len(comments) - prompted) + n_searches  # searches are organic by nature
+    organic = (len(comments) - prompted) + n_searches + n_external
 
     # dominant sentiment across the cluster's question-comments
     sentiments = [c.sentiment for c in comments if c.sentiment and c.sentiment != "neutral"]
@@ -84,7 +85,7 @@ def compute_integrity(session: Session, creator_id: str, cluster: list[tuple],
     demand_per_1k = _exposure_normalized(session, organic, cluster)
 
     # --- per-platform/source breakdown + segment label ---
-    breakdown, segment = _demand_segmentation(session, comments, n_searches)
+    breakdown, segment = _demand_segmentation(session, comments, n_searches, cluster)
 
     return {
         "unique_askers": unique_askers,
@@ -101,12 +102,14 @@ def compute_integrity(session: Session, creator_id: str, cluster: list[tuple],
     }
 
 
-def _demand_segmentation(session: Session, comments: list, n_searches: int) -> tuple[dict, str]:
-    """Where did this demand come from? Per-platform comment counts + on-site search.
+def _demand_segmentation(session: Session, comments: list, n_searches: int,
+                         cluster: list[tuple] | None = None) -> tuple[dict, str]:
+    """Where did this demand come from? Per-platform comment counts + on-site search
+    + external sources (newsletter/podcast/forwarded).
 
-    Segments: 'everywhere' (≥2 platforms), 'platform:<x>' (one platform dominates),
-    'search_only' (mostly the creator's own search page). The same person is never
-    merged across platforms — we count topics by source, not identities.
+    Segments: 'everywhere' (≥2 platforms/sources), 'platform:<x>' (one dominates),
+    'search_only'. The same person is never merged across platforms — we count topics
+    by source, not identities.
     """
     from cci_core.models import Post
 
@@ -121,6 +124,11 @@ def _demand_segmentation(session: Session, comments: list, n_searches: int) -> t
                 select(Post.id, Post.platform).where(Post.id.in_(post_ids)))}
         for c in comments:
             plat = plat_by_post.get(c.post_id, "unknown") if c.post_id else "unknown"
+            breakdown[plat] = breakdown.get(plat, 0) + 1
+    # external sources from the cluster (kind 'external:<platform>')
+    for s in (cluster or []):
+        if str(s[0]).startswith("external:"):
+            plat = str(s[0]).split(":", 1)[1] or "external"
             breakdown[plat] = breakdown.get(plat, 0) + 1
     platforms = [k for k in breakdown if k not in ("search", "unknown")]
     if len(platforms) >= 2:

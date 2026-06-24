@@ -65,21 +65,30 @@ def build_radar(creator_id: str, *, backlog: bool = False) -> int:
 
 def _collect_signals(session: Session, creator_id: str,
                      since: datetime | None) -> list[tuple[str, str, str | None]]:
-    """Return (kind, text, comment_id) where kind ∈ {search, comment}.
+    """Return (kind, text, comment_id). kind ∈ {search, comment, external:<platform>}.
 
     comment_id is carried so the radar card can remember its askers (Loop-Closer).
+    External signals (newsletter replies, podcast comments, forwarded DMs) make
+    cross-platform demand synthesis end-to-end: 'what is asked everywhere?'.
     """
+    from cci_core.models import ExternalSignal
+
     q_stmt = select(Query.text).where(Query.creator_id == creator_id)
     c_stmt = select(Comment.text, Comment.id).where(
         Comment.creator_id == creator_id, Comment.is_question.is_(True)
     )
+    e_stmt = select(ExternalSignal.text, ExternalSignal.platform).where(
+        ExternalSignal.creator_id == creator_id, ExternalSignal.is_question.is_(True)
+    )
     if since is not None:
         q_stmt = q_stmt.where(Query.created_at >= since)
         c_stmt = c_stmt.where(Comment.ingested_at >= since)
+        e_stmt = e_stmt.where(ExternalSignal.created_at >= since)
     signals: list[tuple[str, str, str | None]] = [
         ("search", t, None) for t in session.scalars(q_stmt)
     ]
     signals += [("comment", t, cid) for t, cid in session.execute(c_stmt)]
+    signals += [(f"external:{plat}", t, None) for t, plat in session.execute(e_stmt)]
     return [(k, t.strip(), cid) for k, t, cid in signals if t and t.strip()]
 
 
@@ -124,7 +133,9 @@ def _previous_week_counts(session: Session, creator_id: str, now: datetime) -> d
 def _make_card(session: Session, creator_id: str, cluster: list[tuple],
                week: str, prev_counts: dict[str, int]) -> DemandTopic | None:
     search_count = sum(1 for s in cluster if s[0] == "search")
-    comment_count = sum(1 for s in cluster if s[0] == "comment")
+    # external demand (newsletter/podcast/forwarded) counts as audience asks alongside comments
+    comment_count = sum(1 for s in cluster
+                        if s[0] == "comment" or str(s[0]).startswith("external:"))
     verbatims = [s[1] for s in cluster][:5]
     asker_comment_ids = [s[2] for s in cluster if s[0] == "comment" and s[2]]
 
