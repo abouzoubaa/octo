@@ -89,6 +89,12 @@ def sift_and_shift_opportunities(session: Session, creator_id: str,
     from cci_agent.canonical import variants_of
     from cci_core.models import CanonicalContent
 
+    # load demand once (loop-invariant) instead of per canonical
+    demand_words = [
+        {w for w in (d.label or "").lower().split() if len(w) > 3}
+        for d in session.scalars(
+            select(DemandTopic).where(DemandTopic.creator_id == creator_id))]
+
     opportunities = []
     for c in session.scalars(
             select(CanonicalContent).where(CanonicalContent.creator_id == creator_id)):
@@ -104,11 +110,7 @@ def sift_and_shift_opportunities(session: Session, creator_id: str,
                 break
         # is there demand for this topic? (any demand cluster overlapping the title)
         words = {w for w in (c.title or "").lower().split() if len(w) > 3}
-        demand = session.scalars(
-            select(DemandTopic).where(DemandTopic.creator_id == creator_id)).all()
-        has_demand = any(
-            words & {w for w in (d.label or "").lower().split() if len(w) > 3}
-            for d in demand)
+        has_demand = any(words & dw for dw in demand_words)
         opportunities.append({
             "canonical_id": c.id, "title": c.title,
             "source_platform": source.platform, "source_post_id": source.id,

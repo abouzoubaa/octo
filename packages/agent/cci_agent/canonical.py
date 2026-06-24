@@ -56,12 +56,10 @@ def group_variants(session: Session, creator_id: str) -> int:
                 cluster_of[j] = cid
                 clusters[cid].append(j)
 
-    # clear prior grouping for these posts, then (re)build canonical objects
-    session.execute(
-        select(CanonicalContent).where(CanonicalContent.creator_id == creator_id))
+    # re-cluster from scratch: detach posts, drop prior canonicals, rebuild
     for p in posts:
         p.canonical_id = None
-    # remove orphaned canonicals for this creator
+    session.flush()
     for c in session.scalars(
             select(CanonicalContent).where(CanonicalContent.creator_id == creator_id)):
         session.delete(c)

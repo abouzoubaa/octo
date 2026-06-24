@@ -180,6 +180,16 @@ def dispatch_approved(creator_id: str) -> dict:
             if budget <= 0:
                 stats["skipped_cap"] += 1  # viral post: the rest queue for next hour
                 continue
+            # enforce the connector capability for this comment's platform — a
+            # platform without comment-reply / messaging (e.g. TikTok archive) must
+            # not be sent through here. The capability registry is a real gate, not advisory.
+            post = session.get(Post, comment.post_id) if comment.post_id else None
+            platform = post.platform if post else "instagram"
+            if not _can_dm(platform):
+                job.status = DmStatus.failed
+                job.error = f"{platform} connector lacks comment/message capability"
+                stats["failed"] += 1
+                continue
             try:
                 if job.public_reply:
                     client.reply_to_comment(comment.external_id, job.public_reply)
@@ -195,3 +205,12 @@ def dispatch_approved(creator_id: str) -> dict:
                 job.error = str(exc)[:500]
                 stats["failed"] += 1
     return stats
+
+
+def _can_dm(platform: str) -> bool:
+    """The platform's connector must advertise comment-reply AND messaging to send."""
+    from cci_core.connectors import capabilities_for
+    from cci_core.connectors.base import COMMENTS_REPLY, MESSAGES_SEND
+
+    caps = capabilities_for(platform)
+    return COMMENTS_REPLY in caps and MESSAGES_SEND in caps

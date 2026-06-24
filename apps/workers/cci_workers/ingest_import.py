@@ -79,6 +79,8 @@ def _ensure_account(session, creator_id: str, platform: str) -> None:
 def _coerce(raw) -> NormalizedContent:
     if isinstance(raw, NormalizedContent):
         return raw
+    if "external_id" not in raw:
+        raise ValueError("import item missing 'external_id'")
     return NormalizedContent(
         external_id=str(raw["external_id"]),
         kind=raw.get("kind", "video"),
