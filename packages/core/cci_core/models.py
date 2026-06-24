@@ -365,6 +365,16 @@ class DemandTopic(Base):
     state_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     # the askers behind this cluster — for Loop-Closer (pseudonymous comment ids)
     asker_comment_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # --- Demand Integrity: is this demand trustworthy, not just an event count? ---
+    unique_askers: Mapped[int] = mapped_column(Integer, default=0)  # distinct people
+    organic_count: Mapped[int] = mapped_column(Integer, default=0)  # spontaneous asks
+    prompted_count: Mapped[int] = mapped_column(Integer, default=0)  # CTA-driven asks
+    persistence_weeks: Mapped[int] = mapped_column(Integer, default=1)  # weeks seen
+    dominant_sentiment: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    intent_class: Mapped[str | None] = mapped_column(String(16), nullable=True)  # purchase|learning|support|other
+    # --- explainable Opportunity Score (components exposed, not a black box) ---
+    opportunity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    opportunity_components: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

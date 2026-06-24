@@ -211,7 +211,9 @@ def radar_cards(creator_id: str, week: str | None = None,
     stmt = select(DemandTopic).where(DemandTopic.creator_id == creator_id)
     if week:
         stmt = stmt.where(DemandTopic.week == week)
+    # rank by the explainable Opportunity Score (falls back to raw demand)
     cards = db.scalars(stmt.order_by(
+        DemandTopic.opportunity_score.desc().nullslast(),
         (DemandTopic.search_count + DemandTopic.comment_count).desc())).all()
     return [{
         "id": c.id, "label": c.label, "week": c.week,
@@ -220,6 +222,13 @@ def radar_cards(creator_id: str, week: str | None = None,
         "audience_language": c.audience_language, "recommendation": c.recommendation,
         "linked_products": c.linked_products, "confidence": c.confidence,
         "creator_marked": c.creator_marked, "state": c.state.value,
+        "opportunity_score": c.opportunity_score,
+        "opportunity_components": c.opportunity_components,
+        "integrity": {
+            "unique_askers": c.unique_askers, "organic_count": c.organic_count,
+            "prompted_count": c.prompted_count, "persistence_weeks": c.persistence_weeks,
+            "dominant_sentiment": c.dominant_sentiment, "intent_class": c.intent_class,
+        },
     } for c in cards]
 
 

@@ -163,6 +163,17 @@ def _make_card(session: Session, creator_id: str, cluster: list[tuple],
     blob = " ".join(verbatims).lower()
     linked = [{"id": p.id, "name": p.name} for p in products if p.name.lower() in blob]
 
+    # Demand Integrity + explainable Opportunity Score (cci_agent.demand)
+    from cci_agent.demand import compute_integrity, opportunity_score
+
+    integ = compute_integrity(session, creator_id, cluster, label, week)
+    opp = opportunity_score(
+        session, creator_id, volume=total, velocity_pct=wow,
+        persistence_weeks=integ["persistence_weeks"], coverage_strength=confidence,
+        intent_class=integ["intent_class"], has_offer=bool(linked),
+        dominant_sentiment=integ["dominant_sentiment"], coverage=coverage,
+    )
+
     return DemandTopic(
         creator_id=creator_id,
         label=label,
@@ -176,4 +187,12 @@ def _make_card(session: Session, creator_id: str, cluster: list[tuple],
         linked_products=linked or None,
         confidence=data.get("confidence", "medium"),
         asker_comment_ids=asker_comment_ids or None,
+        unique_askers=integ["unique_askers"],
+        organic_count=integ["organic_count"],
+        prompted_count=integ["prompted_count"],
+        persistence_weeks=integ["persistence_weeks"],
+        dominant_sentiment=integ["dominant_sentiment"],
+        intent_class=integ["intent_class"],
+        opportunity_score=opp["score"],
+        opportunity_components=opp["components"],
     )
