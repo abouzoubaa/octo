@@ -6,7 +6,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from cci_api.routers import admin, agent, public, webhooks
+from cci_api.routers import admin, agent, public, public_api, webhooks
 from cci_core.config import get_settings
 
 
@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(webhooks.router)
     app.include_router(admin.router)
     app.include_router(agent.router)
+    app.include_router(public_api.router)
 
     @app.get("/healthz", tags=["ops"])
     def healthz() -> dict:

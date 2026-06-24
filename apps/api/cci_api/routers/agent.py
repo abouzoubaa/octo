@@ -470,3 +470,153 @@ def voice_score(creator_id: str, body: VoiceScoreIn, db: Session = Depends(get_d
     from cci_agent.brand import voice_consistency_score
 
     return voice_consistency_score(db, creator_id, body.text)
+
+
+# ============================================================ v3 scale features
+
+
+@router.get("/drafts/{draft_id}/predict")
+def predict(draft_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.scale import predict_performance
+    from cci_core.models import ContentDraft
+
+    draft = db.get(ContentDraft, draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="draft not found")
+    return predict_performance(db, draft.creator_id, draft)
+
+
+@router.get("/creators/{creator_id}/calendar")
+def calendar(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.scale import content_calendar
+
+    return content_calendar(db, creator_id)
+
+
+@router.get("/creators/{creator_id}/pricing-insights")
+def pricing(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.scale import pricing_insights
+
+    return pricing_insights(db, creator_id)
+
+
+@router.get("/creators/{creator_id}/revenue-forecast")
+def forecast(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.scale import revenue_forecast
+
+    return revenue_forecast(db, creator_id)
+
+
+@router.get("/creators/{creator_id}/education-plan")
+def education(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.scale import education_plan
+
+    return education_plan(db, creator_id)
+
+
+# ---------------------------------------------------------------- CRM
+
+
+@router.get("/creators/{creator_id}/customers")
+def customers(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    from cci_agent.crm import customer_profiles
+
+    return customer_profiles(db, creator_id)
+
+
+@router.get("/creators/{creator_id}/lifecycle")
+def lifecycle(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.crm import lifecycle_segments
+
+    return lifecycle_segments(db, creator_id)
+
+
+# ---------------------------------------------------------------- team & roles
+
+
+class MemberIn(BaseModel):
+    email: str
+    role: str  # owner | creator | analytics | contractor
+
+
+@router.post("/creators/{creator_id}/team")
+def add_team_member(creator_id: str, body: MemberIn, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.team import add_member, audit
+    from cci_core.models import TeamRole
+
+    try:
+        role = TeamRole(body.role)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"invalid role '{body.role}'")
+    member = add_member(db, creator_id, body.email, role)
+    audit(db, creator_id, "admin", "add_team_member", {"email": body.email, "role": body.role})
+    return {"id": member.id, "role": member.role.value}
+
+
+@router.get("/creators/{creator_id}/team")
+def list_team(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    from cci_core.models import TeamMember
+
+    rows = db.scalars(select(TeamMember).where(TeamMember.creator_id == creator_id)).all()
+    return [{"id": m.id, "email": m.email, "role": m.role.value} for m in rows]
+
+
+class ApiKeyIn(BaseModel):
+    name: str
+    scopes: list[str] | None = None
+
+
+@router.post("/creators/{creator_id}/api-keys")
+def create_api_key(creator_id: str, body: ApiKeyIn, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.team import mint_api_key
+
+    record, full = mint_api_key(db, creator_id, body.name, body.scopes)
+    return {"id": record.id, "key": full, "note": "store this now — it is shown only once"}
+
+
+@router.delete("/api-keys/{key_id}")
+def revoke_key(key_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.team import revoke_api_key
+
+    if not revoke_api_key(db, key_id):
+        raise HTTPException(status_code=404, detail="key not found")
+    return {"revoked": True}
+
+
+# ---------------------------------------------------------------- growth & ecosystem
+
+
+@router.get("/creators/{creator_id}/benchmark")
+def benchmark(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.growth import peer_benchmark
+
+    return peer_benchmark(db, creator_id)
+
+
+@router.get("/creators/{creator_id}/competitor-radar")
+def competitor(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.growth import competitor_radar
+
+    return competitor_radar(db, creator_id)
+
+
+class PlagiarismIn(BaseModel):
+    text: str
+
+
+@router.post("/creators/{creator_id}/plagiarism-scan")
+def plagiarism(creator_id: str, body: PlagiarismIn, db: Session = Depends(get_db)) -> dict:
+    from cci_agent.growth import plagiarism_scan
+
+    return plagiarism_scan(db, creator_id, body.text)
+
+
+@router.post("/demand/{topic_id}/export-task")
+def export_task_endpoint(topic_id: str, provider: str = "fake",
+                         db: Session = Depends(get_db)) -> dict:
+    from cci_agent.growth import export_task
+
+    topic = db.get(DemandTopic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail="demand topic not found")
+    return export_task(db, topic.creator_id, topic, provider)

@@ -533,6 +533,9 @@ class CreatorRules(Base):
     auto_approve_types: Mapped[list | None] = mapped_column(
         JSON, nullable=True
     )  # intent types pre-cleared for automation (still gated by eval)
+    # v3 opt-ins (default off — aggregate/anonymised only when enabled)
+    allow_benchmarking: Mapped[bool] = mapped_column(Boolean, default=False)
+    allow_competitor_radar: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -637,3 +640,68 @@ class ExternalSignal(Base):
     text: Mapped[str] = mapped_column(Text)
     is_question: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# =====================================================================================
+# AGENT LAYER — v3 "scale" features (team, ecosystem, public API)
+# =====================================================================================
+
+
+class TeamRole(str, enum.Enum):
+    owner = "owner"
+    creator = "creator"  # can create/approve content
+    analytics = "analytics"  # read-only VA
+    contractor = "contractor"  # drafts only, needs approval
+
+
+# capability gates per role (used by team.has_capability)
+ROLE_CAPABILITIES: dict[TeamRole, set[str]] = {
+    TeamRole.owner: {"read", "draft", "approve", "publish", "manage_team", "billing"},
+    TeamRole.creator: {"read", "draft", "approve", "publish"},
+    TeamRole.analytics: {"read"},
+    TeamRole.contractor: {"read", "draft"},
+}
+
+
+class TeamMember(Base):
+    """Team & role-based access (v3): owner, creator, analytics-only VA, contractor —
+    so Sift scales as a solo creator becomes a team. Approval workflows + audit trail."""
+
+    __tablename__ = "team_members"
+    __table_args__ = (UniqueConstraint("creator_id", "email"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    email: Mapped[str] = mapped_column(String(256))
+    role: Mapped[TeamRole] = mapped_column(Enum(TeamRole, native_enum=False))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ApiKey(Base):
+    """Public API & dev ecosystem (v3 · scale): a hashed API key so third parties
+    can build on Sift's intelligence layer. Scoped + revocable."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(128))
+    prefix: Mapped[str] = mapped_column(String(12), index=True)  # lookup key (non-secret)
+    key_hash: Mapped[str] = mapped_column(String(64))  # sha256 of the full key
+    scopes: Mapped[list | None] = mapped_column(JSON, nullable=True)  # ["demand:read", ...]
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditLog(Base):
+    """Audit trail for team actions (v3) — who did what, for accountability."""
+
+    __tablename__ = "audit_logs"
+    __table_args__ = (Index("ix_audit_creator_ts", "creator_id", "ts"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    actor: Mapped[str] = mapped_column(String(256))  # team member email / "system"
+    action: Mapped[str] = mapped_column(String(64))
+    detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -149,4 +149,11 @@ class FakeLLM(LLMProvider):
                                         "partner with us to answer them."})
         if "voice" in sys_l:
             return json.dumps({"score": 80, "deviations": []})
+        if "thumbnail" in sys_l:
+            return json.dumps({"concepts": [
+                {"text_overlay": first_line[:40] or "WATCH THIS", "layout": "face",
+                 "why": "faces lift CTR"}]})
+        if "skill-development" in sys_l or "development plan" in sys_l:
+            return json.dumps({"one_year": ["improve hooks"], "three_year": ["expand formats"],
+                               "five_year": ["build a team"]})
         return json.dumps({"result": user[:100]})
