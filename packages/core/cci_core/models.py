@@ -710,6 +710,31 @@ class ApiKey(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class Intervention(Base):
+    """The immutable causal spine: an audience need → a recommendation → a draft →
+    published content → measured outcome. Lets Sift attribute results to actions
+    (not just correlate), with matched baselines, holdout controls, and confidence
+    bands instead of deterministic 'performance prediction'."""
+
+    __tablename__ = "interventions"
+    __table_args__ = (Index("ix_interventions_creator", "creator_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
+    demand_topic_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    draft_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    published_post_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # control: an opportunity surfaced but deliberately NOT acted on, to measure lift
+    is_holdout: Mapped[bool] = mapped_column(Boolean, default=False)
+    baseline: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # matched-topic baseline at creation
+    predicted: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {low, point, high, n}
+    outcome: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # measured result
+    status: Mapped[str] = mapped_column(String(16), default="open")  # open|published|measured|holdout
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    measured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class ClaimValidity(str, enum.Enum):
     current = "current"  # the creator's current position
     dated = "dated"  # explicitly time-bound ("in 2024 I...")

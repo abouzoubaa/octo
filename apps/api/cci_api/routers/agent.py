@@ -46,6 +46,16 @@ def transition(topic_id: str, body: TransitionIn, db: Session = Depends(get_db))
         transition_demand(db, topic, to_state, published_post_id=body.published_post_id)
     except InvalidTransition as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    # link the causal spine when content for this opportunity is published
+    if to_state == DemandState.published and body.published_post_id:
+        from cci_agent.causal import record_publication
+        from cci_core.models import Intervention
+
+        iv = db.scalar(select(Intervention).where(
+            Intervention.demand_topic_id == topic.id, Intervention.is_holdout.is_(False))
+            .order_by(Intervention.created_at.desc()))
+        if iv is not None:
+            record_publication(db, iv.id, body.published_post_id)
     return {"id": topic.id, "state": topic.state.value,
             "published_post_id": topic.published_post_id}
 
@@ -236,6 +246,47 @@ def list_outcomes(creator_id: str, stage: str | None = None, limit: int = 50,
              "creator_action": o.creator_action, "result": o.result} for o in rows]
 
 
+# ------------------------------------------------------------- causal layer
+
+
+@router.get("/creators/{creator_id}/interventions")
+def list_interventions(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    from cci_core.models import Intervention
+
+    rows = db.scalars(
+        select(Intervention).where(Intervention.creator_id == creator_id)
+        .order_by(Intervention.created_at.desc()).limit(100)).all()
+    return [{"id": iv.id, "demand_topic_id": iv.demand_topic_id, "draft_id": iv.draft_id,
+             "published_post_id": iv.published_post_id, "is_holdout": iv.is_holdout,
+             "status": iv.status, "baseline": iv.baseline, "predicted": iv.predicted,
+             "outcome": iv.outcome} for iv in rows]
+
+
+class InterventionOutcomeIn(BaseModel):
+    metrics: dict
+
+
+@router.post("/interventions/{intervention_id}/outcome")
+def record_intervention_outcome(intervention_id: str, body: InterventionOutcomeIn,
+                                db: Session = Depends(get_db)) -> dict:
+    from cci_agent.causal import record_outcome
+
+    iv = record_outcome(db, intervention_id, body.metrics)
+    if iv is None:
+        raise HTTPException(status_code=404, detail="intervention not found")
+    return {"id": iv.id, "status": iv.status, "outcome": iv.outcome}
+
+
+@router.get("/creators/{creator_id}/lift")
+def holdout_lift_endpoint(creator_id: str, metric: str = "clicks",
+                          db: Session = Depends(get_db)) -> dict:
+    """Lift of acted-on opportunities vs deliberately-held-out controls — the
+    causal answer to 'did Sift's recommendation work?'"""
+    from cci_agent.causal import holdout_lift
+
+    return holdout_lift(db, creator_id, metric)
+
+
 # ============================================================ v1.5 assist features
 
 
@@ -265,6 +316,10 @@ def make_draft(topic_id: str, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status_code=402, detail={"error": str(exc), "code": exc.code})
     draft = generate_draft(db, topic.creator_id, topic, persist=True)
     events.track(db, "drafts", topic.creator_id, draft_id=draft.id)
+    # open the immutable causal spine for this recommendation (with baseline + CI)
+    from cci_agent.causal import create_intervention
+
+    intervention = create_intervention(db, topic, draft=draft)
     # advance the lifecycle if the creator is acting on it
     if topic.state in (DemandState.new, DemandState.idea):
         try:
@@ -597,13 +652,15 @@ def voice_score(creator_id: str, body: VoiceScoreIn, db: Session = Depends(get_d
 
 @router.get("/drafts/{draft_id}/predict")
 def predict(draft_id: str, db: Session = Depends(get_db)) -> dict:
-    from cci_agent.scale import predict_performance
+    """A confidence INTERVAL (not a deterministic score) for a draft — the band
+    widens with less history, so thin data reads as uncertain."""
+    from cci_agent.causal import performance_interval
     from cci_core.models import ContentDraft
 
     draft = db.get(ContentDraft, draft_id)
     if draft is None:
         raise HTTPException(status_code=404, detail="draft not found")
-    return predict_performance(db, draft.creator_id, draft)
+    return performance_interval(db, draft.creator_id, draft)
 
 
 @router.get("/creators/{creator_id}/calendar")
