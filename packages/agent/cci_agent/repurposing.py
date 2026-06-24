@@ -123,14 +123,38 @@ def sift_and_shift_opportunities(session: Session, creator_id: str,
     return opportunities
 
 
-def draft_shift(session: Session, source_post_id: str, target_platform: str) -> dict:
+def draft_shift(session: Session, source_post_id: str, target_platform: str,
+                persist: bool = True) -> dict:
     """Generate the platform-native draft for a Sift & Shift opportunity, grounded in
-    the source post (e.g. a YouTube transcript → a TikTok script)."""
+    the source post (e.g. a YouTube transcript → a TikTok script), and persist it into
+    the creator's Drafts so the migration becomes an actionable, editable brief."""
+    from cci_core.models import ContentDraft, Post
+
     fmt = {"tiktok": "tiktok_hooks", "instagram": "ig_carousel",
            "youtube": "newsletter"}.get(target_platform, "tiktok_hooks")
     adapted = repurpose(session, source_post_id, fmt)
     adapted["target_platform"] = target_platform
     adapted["migrated"] = True
+
+    if persist:
+        post = session.get(Post, source_post_id)
+        # tiktok_hooks → a list of hooks; other formats → a single content block
+        content = adapted.get("content")
+        hooks = content if isinstance(content, list) else None
+        script = content if isinstance(content, str) else None
+        draft = ContentDraft(
+            creator_id=post.creator_id,
+            title=f"{target_platform.title()} version: {(post.caption or 'migrated post')[:200]}"[:256],
+            brief={"migrated_from": source_post_id, "source_platform": post.platform,
+                   "target_platform": target_platform, "format": fmt},
+            hooks=hooks,
+            script=script,
+            source_post_ids=[source_post_id],
+            status="draft",
+        )
+        session.add(draft)
+        session.flush()
+        adapted["draft_id"] = draft.id
     return adapted
 
 

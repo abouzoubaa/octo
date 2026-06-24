@@ -33,6 +33,14 @@ export const useGroup = routeAction$(async (data) => {
   return { ok: res !== null, n: res?.canonical_objects };
 });
 
+// Draft a platform-native version of a source post → lands in Drafts.
+export const useShift = routeAction$(async (data) => {
+  const res = await adminPost<{ draft_id?: string }>(
+    `/agent/posts/${data.postId}/shift?target_platform=${data.target}`,
+  );
+  return { ok: res !== null, draftId: res?.draft_id };
+});
+
 const ICON: Record<string, string> = {
   instagram: "📸",
   youtube: "▶️",
@@ -45,6 +53,7 @@ const ICON: Record<string, string> = {
 export default component$(() => {
   const data = useCrossPlatform();
   const group = useGroup();
+  const shift = useShift();
 
   return (
     <>
@@ -125,6 +134,20 @@ export default component$(() => {
             {" "}
             {o.target_platform}-native version from the source.
           </p>
+          <div class="actions">
+            <Form action={shift}>
+              <input type="hidden" name="postId" value={o.source_post_id} />
+              <input type="hidden" name="target" value={o.target_platform} />
+              <button class="pill-btn" type="submit">
+                ✍️ Draft {ICON[o.target_platform] ?? ""} version
+              </button>
+            </Form>
+            {shift.value?.ok && shift.value.draftId && (
+              <Link class="pill-btn ghost" href={`/studio/${data.value.cid}/drafts`}>
+                ✓ Drafted — open Drafts
+              </Link>
+            )}
+          </div>
         </div>
       ))}
     </>

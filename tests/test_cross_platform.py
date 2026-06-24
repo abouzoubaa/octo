@@ -122,6 +122,14 @@ def test_sift_and_shift_finds_missing_platform(creator, session):
     # and we can draft the platform-native version from the source
     draft = draft_shift(session, o["source_post_id"], "tiktok")
     assert draft["target_platform"] == "tiktok" and draft["migrated"] is True
+    # the migrated draft is persisted into the creator's Drafts (actionable, editable)
+    from cci_core.models import ContentDraft
+
+    assert draft["draft_id"]
+    saved = session.get(ContentDraft, draft["draft_id"])
+    assert saved is not None and saved.creator_id == creator.id
+    assert saved.source_post_ids == [o["source_post_id"]]
+    assert saved.brief["target_platform"] == "tiktok"
 
 
 def test_sift_and_shift_skips_already_covered(creator, session):
