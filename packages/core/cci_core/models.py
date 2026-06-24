@@ -30,6 +30,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from cci_core.crypto import EncryptedString
+
 
 def _uuid() -> str:
     return str(uuid.uuid4())
@@ -76,8 +78,9 @@ class OAuthToken(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     creator_id: Mapped[str] = mapped_column(ForeignKey("creators.id", ondelete="CASCADE"))
     platform: Mapped[str] = mapped_column(String(16))  # instagram | youtube
-    access_token: Mapped[str] = mapped_column(Text)
-    refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # encrypted at rest (transparent in Python) — see cci_core.crypto
+    access_token: Mapped[str] = mapped_column(EncryptedString)
+    refresh_token: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

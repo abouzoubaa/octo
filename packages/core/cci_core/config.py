@@ -26,8 +26,22 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8000"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    debug: bool = True  # set False in production to enforce fail-closed secrets
     # v1 single-operator admin auth (manual onboarding)
     admin_token: str = "change-me"
+    # Fernet key for at-rest encryption of OAuth tokens; empty = passthrough (dev)
+    encryption_key: str = ""
+
+    def assert_production_secrets(self) -> list[str]:
+        """Return a list of insecure-default secrets; empty when safe for prod."""
+        problems = []
+        if self.admin_token in ("", "change-me"):
+            problems.append("CCI_ADMIN_TOKEN is the default — set a strong secret")
+        if not self.encryption_key:
+            problems.append("CCI_ENCRYPTION_KEY is unset — OAuth tokens stored in plaintext")
+        if self.ig_webhook_verify_token in ("", "change-me-too"):
+            problems.append("CCI_IG_WEBHOOK_VERIFY_TOKEN is the default")
+        return problems
 
     # --- AI providers (thin interfaces, swap by config) ------------------------
     llm_provider: str = "fake"  # fake | anthropic | openai-compatible

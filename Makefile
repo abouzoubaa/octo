@@ -6,8 +6,14 @@ install:            ## install python deps (editable) + dev extras
 dev-infra:          ## start postgres+pgvector, redis, minio
 	docker compose -f infra/docker-compose.yml up -d db redis minio
 
-migrate:            ## create extensions, tables, indexes
+migrate:            ## dev: create extensions, tables, indexes from metadata
 	cci-migrate
+
+migrate-prod:       ## prod: apply versioned Alembic migrations
+	alembic -c infra/alembic.ini upgrade head
+
+migration:          ## author a new migration: make migration m="add X"
+	alembic -c infra/alembic.ini revision --autogenerate -m "$(m)"
 
 api:                ## run the FastAPI service
 	cci-api
