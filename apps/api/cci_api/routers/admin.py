@@ -103,6 +103,51 @@ def delete_post(creator_id: str, post_id: str, db: Session = Depends(get_db)) ->
     return {"ok": True}
 
 
+# ----------------------------------------------------------- GDPR / data rights
+
+
+@router.get("/creators/{creator_id}/export")
+def export_data(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    """Portable export of all of a creator's data (GDPR Art. 20)."""
+    from cci_core.gdpr import export_creator_data
+
+    data = export_creator_data(db, creator_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="creator not found")
+    return data
+
+
+@router.delete("/creators/{creator_id}")
+def erase_creator(creator_id: str, db: Session = Depends(get_db)) -> dict:
+    """Full erasure of a creator and all dependent data (GDPR Art. 17)."""
+    from cci_core.gdpr import delete_creator
+
+    if not delete_creator(db, creator_id):
+        raise HTTPException(status_code=404, detail="creator not found")
+    return {"erased": True}
+
+
+class AudienceErasureIn(BaseModel):
+    pseudonym: str | None = None
+    email: str | None = None
+
+
+@router.post("/creators/{creator_id}/erase-audience")
+def erase_audience(creator_id: str, body: AudienceErasureIn,
+                   db: Session = Depends(get_db)) -> dict:
+    """Erase one audience member's data by pseudonym, and/or a captured lead by email."""
+    from cci_core.gdpr import erase_audience_member, forget_waitlist_email
+
+    result: dict = {}
+    if body.pseudonym:
+        result.update(erase_audience_member(db, creator_id, body.pseudonym))
+    if body.email:
+        result["waitlist_removed"] = forget_waitlist_email(db, creator_id, body.email)
+    if not result:
+        raise HTTPException(status_code=422, detail="provide a pseudonym and/or email")
+    return result
+
+
 # ------------------------------------------------------------ DM approval queue
 
 

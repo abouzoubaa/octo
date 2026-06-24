@@ -29,7 +29,10 @@ def handle_comment_event(creator_id: str, comment_external_id: str, comment_text
                          author_id: str, media_external_id: str | None,
                          trigger_keywords: list[str] | None = None) -> str | None:
     """Webhook entry point. Returns the DmJob id if one was queued."""
+    from cci_core.pii import redact_pii
     from cci_core.privacy import pseudonymize
+
+    comment_text = redact_pii(comment_text) or ""  # GDPR: strip PII before storing
 
     with session_scope() as session:
         creator = session.get(Creator, creator_id)

@@ -17,6 +17,7 @@ from cci_core.models import Comment, Creator, MediaAsset, OAuthToken, Post, Post
 from cci_core.privacy import pseudonymize
 from cci_core.storage import ensure_bucket, store_media_from_url
 from cci_agent.intelligence import score_sentiment
+from cci_core.pii import redact_pii
 from cci_retrieval.intent import INTENT_QUESTION, detect_intent
 
 log = logging.getLogger(__name__)
@@ -161,7 +162,7 @@ def _upsert_comment(session: Session, creator: Creator, post: Post, item: dict) 
     if existing is not None:
         return False
     author = (item.get("from") or {}).get("id", "anonymous")
-    text = item.get("text", "")
+    text = redact_pii(item.get("text", "")) or ""  # GDPR: strip PII before storing
     intent = detect_intent(text)
     is_question = intent.intent == INTENT_QUESTION
     # agent layer: read emotional tenor on question-comments (keyword-only here to
