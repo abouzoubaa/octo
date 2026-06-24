@@ -20,9 +20,13 @@ export default component$(() => {
         </div>
       </header>
 
+      <a class="studio-nav-item glass" href="/studio/connect" style="display:block;margin-bottom:14px;">
+        ➕ Connect an Instagram account
+      </a>
+
       {creators.value.length === 0 && (
         <div class="empty-state glass">
-          No creators yet, or the API/token isn't configured. Onboard one with
+          No creators yet. Connect an Instagram account above, or onboard one with
           <code> cci-ingest create-creator</code>.
         </div>
       )}

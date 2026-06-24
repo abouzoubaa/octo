@@ -6,7 +6,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from cci_api.routers import admin, agent, public, public_api, webhooks
+from cci_api.routers import admin, agent, oauth, public, public_api, webhooks
 from cci_core.config import get_settings
 
 
@@ -24,6 +24,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(public.router)
+    app.include_router(oauth.router)
     app.include_router(webhooks.router)
     app.include_router(admin.router)
     app.include_router(agent.router)

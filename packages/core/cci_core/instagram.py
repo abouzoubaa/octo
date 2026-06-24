@@ -167,3 +167,38 @@ def exchange_for_long_lived(short_token: str) -> dict[str, Any]:
     )
     resp.raise_for_status()
     return resp.json()
+
+
+# Scopes requested at OAuth time — only what the product visibly uses (extra
+# scopes are a common App Review rejection reason).
+IG_SCOPES = (
+    "instagram_business_basic,instagram_business_manage_comments,"
+    "instagram_business_manage_messages"
+)
+
+
+def authorize_url(redirect_uri: str, state: str) -> str:
+    """The Instagram Login consent URL to send a connecting creator to."""
+    from urllib.parse import urlencode
+
+    s = get_settings()
+    params = urlencode({
+        "client_id": s.ig_app_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": IG_SCOPES,
+        "state": state,
+    })
+    return f"https://www.instagram.com/oauth/authorize?{params}"
+
+
+def refresh_long_lived(long_token: str) -> dict[str, Any]:
+    """Refresh a long-lived token (valid ~60 days) before it expires."""
+    s = get_settings()
+    resp = httpx.get(
+        f"{s.ig_graph_base}/refresh_access_token",
+        params={"grant_type": "ig_refresh_token", "access_token": long_token},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()

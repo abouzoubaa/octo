@@ -42,6 +42,10 @@ def tick() -> None:
             job = periodic.enqueue("cci_workers.radar.build_radar", creator_id)
             periodic.enqueue("cci_workers.digest.send_digest", creator_id, depends_on=job)
 
+    # daily OAuth token refresh (global, not per-creator): 06:00 UTC
+    if now.hour == 6 and now.minute < 5:
+        periodic.enqueue("cci_workers.refresh_tokens.refresh_due_tokens")
+
 
 def schedule_forever(interval_s: int = 300) -> None:
     import time
