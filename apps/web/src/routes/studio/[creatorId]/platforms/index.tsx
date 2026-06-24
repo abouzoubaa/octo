@@ -43,6 +43,14 @@ export const useGroup = routeAction$(async (data) => {
   return { ok: res !== null, n: res?.canonical_objects };
 });
 
+// Backfill a connected native platform (e.g. YouTube) through its connector.
+export const useSync = routeAction$(async (data) => {
+  const res = await adminPost<{ job_id: string; platform: string }>(
+    `/admin/creators/${data.cid}/sync-native?platform=${data.platform}`,
+  );
+  return { ok: res !== null, platform: data.platform as string };
+});
+
 // Draft a platform-native version of a source post → lands in Drafts.
 export const useShift = routeAction$(async (data) => {
   const res = await adminPost<{ draft_id?: string }>(
@@ -64,6 +72,7 @@ export default component$(() => {
   const data = useCrossPlatform();
   const group = useGroup();
   const shift = useShift();
+  const sync = useSync();
 
   return (
     <>
@@ -95,6 +104,20 @@ export default component$(() => {
           <p class="evidence">
             {p.capabilities.map((c) => c.replace(".", " ")).join(" · ")}
           </p>
+          {data.value.connected.has(p.platform) && p.capabilities.includes("content.read") && (
+            <div class="actions">
+              <Form action={sync}>
+                <input type="hidden" name="cid" value={data.value.cid} />
+                <input type="hidden" name="platform" value={p.platform} />
+                <button class="pill-btn ghost" type="submit">
+                  ⟲ Sync now
+                </button>
+              </Form>
+              {sync.value?.ok && sync.value.platform === p.platform && (
+                <span class="open">queued ✓</span>
+              )}
+            </div>
+          )}
         </div>
       ))}
 

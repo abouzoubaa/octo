@@ -1,0 +1,65 @@
+"""Admin endpoint that triggers a native connector sync (YouTube backfill)."""
+import pytest
+from fastapi.testclient import TestClient
+
+from cci_api.main import create_app
+from cci_core.config import get_settings
+from cci_core.models import OAuthToken, PlatformAccount
+
+
+@pytest.fixture()
+def client():
+    return TestClient(create_app(), raise_server_exceptions=True)
+
+
+def _admin():
+    return {"Authorization": f"Bearer {get_settings().admin_token}"}
+
+
+class _FakeJob:
+    id = "job-xyz"
+
+
+class _FakeQueue:
+    def __init__(self):
+        self.calls = []
+
+    def enqueue(self, func_path, *args, **kwargs):
+        self.calls.append((func_path, args))
+        return _FakeJob()
+
+
+def test_sync_native_rejects_unknown_platform(client, creator):
+    r = client.post(f"/admin/creators/{creator.id}/sync-native?platform=myspace",
+                    headers=_admin())
+    assert r.status_code == 400
+    assert "native content connector" in r.json()["detail"]
+
+
+def test_sync_native_requires_authorization(client, creator):
+    # youtube is a real connector, but this creator hasn't connected it
+    r = client.post(f"/admin/creators/{creator.id}/sync-native?platform=youtube",
+                    headers=_admin())
+    assert r.status_code == 400
+    assert "authorization" in r.json()["detail"]
+
+
+def test_sync_native_dispatches_when_connected(client, creator, session, monkeypatch):
+    import cci_workers.queue as q
+
+    session.add(OAuthToken(creator_id=creator.id, platform="youtube", access_token="tok"))
+    session.add(PlatformAccount(creator_id=creator.id, platform="youtube",
+                                external_account_id="UC_channel", mode="native"))
+    session.commit()
+    fake = _FakeQueue()
+    monkeypatch.setattr(q, "get_queue", lambda *a, **k: fake)
+
+    r = client.post(f"/admin/creators/{creator.id}/sync-native?platform=youtube",
+                    headers=_admin())
+    assert r.status_code == 200
+    body = r.json()
+    assert body["job_id"] == "job-xyz" and body["channel"] == "UC_channel"
+    # dispatched the right worker with (creator_id, platform)
+    func_path, args = fake.calls[0]
+    assert func_path == "cci_workers.sync_native.sync_native"
+    assert args == (creator.id, "youtube")

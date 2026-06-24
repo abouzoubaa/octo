@@ -14,7 +14,7 @@ from cci_core import events
 from cci_core.db import get_db
 from cci_core.models import (
     Comment, Creator, CreatorStatus, DemandTopic, DmJob, DmStatus, Event,
-    OAuthToken, Post, PostStatus, Product, Query,
+    OAuthToken, PlatformAccount, Post, PostStatus, Product, Query,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
@@ -102,6 +102,32 @@ def trigger_backfill(creator_id: str) -> dict:
     job = get_queue(INGEST).enqueue("cci_workers.ingest_instagram.backfill_creator",
                                     creator_id, job_timeout=3600 * 6)
     return {"job_id": job.id}
+
+
+@router.post("/creators/{creator_id}/sync-native")
+def trigger_native_sync(creator_id: str, platform: str = "youtube",
+                        db: Session = Depends(get_db)) -> dict:
+    """Backfill a connected native platform (e.g. YouTube) through its connector.
+    Validates the connector + authorization synchronously, then enqueues the sync."""
+    from cci_core.connectors import capabilities_for
+    from cci_core.connectors.base import CONTENT_READ
+    from cci_workers.queue import INGEST, get_queue
+
+    if CONTENT_READ not in capabilities_for(platform):
+        raise HTTPException(status_code=400,
+                            detail=f"'{platform}' has no native content connector")
+    token = db.scalar(select(OAuthToken).where(
+        OAuthToken.creator_id == creator_id, OAuthToken.platform == platform))
+    if token is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"no {platform} authorization — connect the account first")
+    account = db.scalar(select(PlatformAccount).where(
+        PlatformAccount.creator_id == creator_id, PlatformAccount.platform == platform))
+    job = get_queue(INGEST).enqueue("cci_workers.sync_native.sync_native",
+                                    creator_id, platform, job_timeout=3600 * 3)
+    return {"job_id": job.id, "platform": platform,
+            "channel": account.external_account_id if account else None}
 
 
 @router.post("/creators/{creator_id}/process")
