@@ -165,6 +165,12 @@ def test_sync_native_persists_posts_and_comments(creator, session):
     assert any(c.is_question for c in comments)
     # author handle is pseudonymised, never stored raw
     assert all(c.author_pseudonym != "UCfan1" for c in comments)
+    # the sync stamps last_synced_at on the platform account
+    from cci_core.models import PlatformAccount
+
+    pa = session.scalar(select(PlatformAccount).where(
+        PlatformAccount.creator_id == creator.id, PlatformAccount.platform == "youtube"))
+    assert pa is not None and pa.last_synced_at is not None
 
 
 def test_sync_native_is_idempotent(creator, session):

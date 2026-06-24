@@ -63,3 +63,18 @@ def test_sync_native_dispatches_when_connected(client, creator, session, monkeyp
     func_path, args = fake.calls[0]
     assert func_path == "cci_workers.sync_native.sync_native"
     assert args == (creator.id, "youtube")
+
+
+def test_connectors_endpoint_reports_last_synced(client, creator, session):
+    from datetime import datetime, timezone
+
+    session.add(OAuthToken(creator_id=creator.id, platform="youtube", access_token="tok"))
+    session.add(PlatformAccount(
+        creator_id=creator.id, platform="youtube", external_account_id="UC",
+        mode="native", last_synced_at=datetime(2026, 6, 1, tzinfo=timezone.utc)))
+    session.commit()
+
+    r = client.get(f"/admin/creators/{creator.id}/connectors", headers=_admin())
+    assert r.status_code == 200
+    yt = next(c for c in r.json() if c["platform"] == "youtube")
+    assert yt["last_synced_at"].startswith("2026-06-01")

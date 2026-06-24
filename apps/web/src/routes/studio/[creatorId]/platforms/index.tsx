@@ -24,16 +24,32 @@ export const useCrossPlatform = routeLoader$(async ({ params, query }) => {
       `/agent/creators/${cid}/sift-and-shift?target_platform=${target}`,
     ),
   ]);
+  const connectedRows = connected ?? [];
   return {
     cid,
     allPlatforms,
     targets,
     target,
-    connected: new Set((connected ?? []).map((c) => c.platform)),
+    connected: new Set(connectedRows.map((c) => c.platform)),
+    // platform → last_synced_at ISO string (null = connected, never synced)
+    synced: Object.fromEntries(connectedRows.map((c) => [c.platform, c.last_synced_at ?? null])),
     canonical: canonical ?? [],
     shift: shift ?? [],
   };
 });
+
+// "synced 3h ago" / "never synced" — coarse relative time, computed server-side.
+function syncedLabel(iso: string | null | undefined): string {
+  if (iso === undefined) return "";
+  if (iso === null) return "never synced";
+  const secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (secs < 90) return "synced just now";
+  const mins = secs / 60;
+  if (mins < 90) return `synced ${Math.round(mins)}m ago`;
+  const hrs = mins / 60;
+  if (hrs < 36) return `synced ${Math.round(hrs)}h ago`;
+  return `synced ${Math.round(hrs / 24)}d ago`;
+}
 
 // (Re)group repurposed posts into canonical answers.
 export const useGroup = routeAction$(async (data) => {
@@ -99,6 +115,9 @@ export default component$(() => {
               <span class="open">connected</span>
             ) : (
               <span class="date">available</span>
+            )}
+            {data.value.connected.has(p.platform) && (
+              <span class="date">{syncedLabel(data.value.synced[p.platform])}</span>
             )}
           </div>
           <p class="evidence">

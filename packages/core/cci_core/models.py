@@ -90,6 +90,8 @@ class PlatformAccount(Base):
     mode: Mapped[str] = mapped_column(String(16), default="native")  # native|import|forward
     status: Mapped[str] = mapped_column(String(16), default="connected")  # connected|archive_only|needs_reauth
     connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)  # set by sync_native on each run
 
 
 class CanonicalContent(Base):

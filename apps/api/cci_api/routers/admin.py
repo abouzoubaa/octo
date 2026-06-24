@@ -72,8 +72,16 @@ def creator_connectors(creator_id: str, db: Session = Depends(get_db)) -> list[d
 
     tokens = db.scalars(select(OAuthToken).where(
         OAuthToken.creator_id == creator_id)).all()
-    return [{"platform": t.platform, "connected": True,
-             "capabilities": sorted(capabilities_for(t.platform))} for t in tokens]
+    accounts = {a.platform: a for a in db.scalars(select(PlatformAccount).where(
+        PlatformAccount.creator_id == creator_id)).all()}
+    out = []
+    for t in tokens:
+        acct = accounts.get(t.platform)
+        synced = acct.last_synced_at if acct else None
+        out.append({"platform": t.platform, "connected": True,
+                    "capabilities": sorted(capabilities_for(t.platform)),
+                    "last_synced_at": synced.isoformat() if synced else None})
+    return out
 
 
 class TokenIn(BaseModel):

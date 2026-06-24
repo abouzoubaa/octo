@@ -70,6 +70,7 @@ export interface ConnectorRow {
   platform: string;
   connected?: boolean;
   capabilities: string[];
+  last_synced_at?: string | null;
 }
 
 export interface CanonicalRow {

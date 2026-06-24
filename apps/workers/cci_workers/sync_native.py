@@ -13,6 +13,7 @@ supplies an ``account`` object exposing ``external_account_id`` and a decrypted
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from sqlalchemy import select
@@ -79,6 +80,12 @@ def sync_native(creator_id: str, platform: str, *,
                     if created:
                         stats["comments"] += 1
                         stats["questions"] += int(is_question)
+
+        # stamp the sync so the dashboard can show "last synced" per connector
+        pa = session.scalar(select(PlatformAccount).where(
+            PlatformAccount.creator_id == creator_id, PlatformAccount.platform == platform))
+        if pa is not None:
+            pa.last_synced_at = datetime.now(timezone.utc)
     log.info("native sync %s for %s: %s", platform, creator_id, stats)
     return stats
 
