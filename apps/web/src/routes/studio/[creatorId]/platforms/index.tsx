@@ -8,6 +8,7 @@ import {
   type DemandCard,
   type ShiftOpportunity,
 } from "~/lib/admin-api";
+import { PLATFORM_ICON as ICON } from "~/lib/platform-icons";
 
 export const useCrossPlatform = routeLoader$(async ({ params, query }) => {
   const cid = params.creatorId;
@@ -97,15 +98,6 @@ export const useShift = routeAction$(async (data) => {
   return { ok: res !== null, draftId: res?.draft_id };
 });
 
-const ICON: Record<string, string> = {
-  instagram: "📸",
-  youtube: "▶️",
-  tiktok: "🎵",
-  newsletter: "✉️",
-  podcast: "🎙️",
-  discord: "💬",
-};
-
 export default component$(() => {
   const data = useCrossPlatform();
   const group = useGroup();
@@ -131,8 +123,8 @@ export default component$(() => {
         Connectors
         <Form action={syncAll} style="display:inline; margin-left:8px;">
           <input type="hidden" name="cid" value={data.value.cid} />
-          <button class="pill-btn ghost" type="submit">
-            ⟲ Sync all
+          <button class="pill-btn ghost" type="submit" disabled={syncAll.isRunning}>
+            {syncAll.isRunning ? "syncing…" : "⟲ Sync all"}
           </button>
         </Form>
         {syncAll.value?.ok && (
@@ -174,8 +166,8 @@ export default component$(() => {
               <Form action={sync}>
                 <input type="hidden" name="cid" value={data.value.cid} />
                 <input type="hidden" name="platform" value={p.platform} />
-                <button class="pill-btn ghost" type="submit">
-                  ⟲ Sync now
+                <button class="pill-btn ghost" type="submit" disabled={sync.isRunning}>
+                  {sync.isRunning ? "syncing…" : "⟲ Sync now"}
                 </button>
               </Form>
               {sync.value?.ok && sync.value.platform === p.platform && (
@@ -190,8 +182,8 @@ export default component$(() => {
         Canonical answers
         <Form action={group} style="display:inline; margin-left:8px;">
           <input type="hidden" name="cid" value={data.value.cid} />
-          <button class="pill-btn ghost" type="submit">
-            ⟳ Group
+          <button class="pill-btn ghost" type="submit" disabled={group.isRunning}>
+            {group.isRunning ? "…" : "⟳ Group"}
           </button>
         </Form>
       </p>
@@ -248,8 +240,8 @@ export default component$(() => {
             <Form action={shift}>
               <input type="hidden" name="postId" value={o.source_post_id} />
               <input type="hidden" name="target" value={o.target_platform} />
-              <button class="pill-btn" type="submit">
-                ✍️ Draft {ICON[o.target_platform] ?? ""} version
+              <button class="pill-btn" type="submit" disabled={shift.isRunning}>
+                {shift.isRunning ? "drafting…" : `✍️ Draft ${ICON[o.target_platform] ?? ""} version`}
               </button>
             </Form>
             {shift.value?.ok && shift.value.draftId && (

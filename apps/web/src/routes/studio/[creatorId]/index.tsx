@@ -7,6 +7,7 @@ import {
   type DocumentHead,
 } from "@builder.io/qwik-city";
 import { adminGet, adminPost, type DemandCard } from "~/lib/admin-api";
+import { PLATFORM_ICON } from "~/lib/platform-icons";
 
 interface Briefing {
   week: string;
@@ -111,15 +112,6 @@ const RECONCILE: Record<string, { icon: string; text: string }> = {
   well: { icon: "✓", text: "You've already answered this" },
   partial: { icon: "◑", text: "Partly covered — go deeper or re-promote" },
   gap: { icon: "🎯", text: "Genuine gap — you haven't covered this" },
-};
-
-const PLATFORM_ICON: Record<string, string> = {
-  instagram: "📸",
-  youtube: "▶️",
-  tiktok: "🎵",
-  newsletter: "✉️",
-  podcast: "🎙️",
-  discord: "💬",
 };
 
 // the next lifecycle step + the action verb a creator actually thinks in
@@ -300,8 +292,8 @@ export default component$(() => {
                 ) : (
                   <Form action={repromote} style="display:inline; margin-left:8px;">
                     <input type="hidden" name="topicId" value={c.id} />
-                    <button class="pill-btn ghost" type="submit">
-                      ♻️ Close via re-promote
+                    <button class="pill-btn ghost" type="submit" disabled={repromote.isRunning}>
+                      {repromote.isRunning ? "…" : "♻️ Close via re-promote"}
                     </button>
                   </Form>
                 )
@@ -314,28 +306,28 @@ export default component$(() => {
               <Form action={transition}>
                 <input type="hidden" name="topicId" value={c.id} />
                 <input type="hidden" name="to" value={NEXT_STATE[c.state]!.to} />
-                <button class="pill-btn" type="submit">
+                <button class="pill-btn" type="submit" disabled={transition.isRunning}>
                   {NEXT_STATE[c.state]!.verb}
                 </button>
               </Form>
             )}
             <Form action={draft}>
               <input type="hidden" name="topicId" value={c.id} />
-              <button class="pill-btn ghost" type="submit">
-                ✍️ Draft
+              <button class="pill-btn ghost" type="submit" disabled={draft.isRunning}>
+                {draft.isRunning ? "…" : "✍️ Draft"}
               </button>
             </Form>
             <Form action={series}>
               <input type="hidden" name="topicId" value={c.id} />
-              <button class="pill-btn ghost" type="submit">
-                🎬 Series
+              <button class="pill-btn ghost" type="submit" disabled={series.isRunning}>
+                {series.isRunning ? "…" : "🎬 Series"}
               </button>
             </Form>
             {c.state !== "dismissed" && (
               <Form action={transition}>
                 <input type="hidden" name="topicId" value={c.id} />
                 <input type="hidden" name="to" value="dismissed" />
-                <button class="pill-btn ghost" type="submit">
+                <button class="pill-btn ghost" type="submit" disabled={transition.isRunning}>
                   Ignore — weak
                 </button>
               </Form>
