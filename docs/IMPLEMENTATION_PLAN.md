@@ -1,5 +1,9 @@
 # Creator Content Intelligence — Implementation Plan (v1)
 
+> **Historical v1 plan.** The product has since grown an agent layer and a
+> cross-platform connector framework well beyond this scope. For the built system,
+> see [`CURRENT_STATE.md`](CURRENT_STATE.md).
+
 Derived from the v1 spec (rev 6, June 2026). One sentence: turn a creator's entire
 content history into a search engine and assistant for fans — and turn fans'
 questions into a content plan and revenue for the creator.

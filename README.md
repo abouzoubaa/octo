@@ -1,31 +1,31 @@
-# Creator Content Intelligence
+# Creator Content Intelligence — "Sift"
 
-A search-first archive for each creator — powered by retrieval, amplified by
-comment-to-DM, and monetized through demand intelligence.
+A demand-to-outcome operating system for creators. It started as a search-first
+archive (retrieval + grounded answer cards) and now spans an **agent layer** and a
+**cross-platform connector framework**: a creator connects their accounts, every
+post/caption/transcript/comment becomes searchable, and every fan question becomes
+a demand signal that **Demand Radar** turns into a weekly, per-platform plan — which
+the creator acts on (draft / series / Sift & Shift / re-promote) and closes the loop.
 
-A creator connects their Instagram (and/or YouTube) account; the app turns
-everything they ever posted — videos, captions, spoken words, on-screen text —
-into a searchable library at `yourapp.com/<creator>`. Fans ask in normal words
-and get the right old posts back, plus a short grounded answer **with citations**.
-Every question becomes a demand signal: **Demand Radar** tells the creator each
-week what their audience wants next.
-
-📄 Full plan: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
+📄 Current state: [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) ·
+Original plan: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) ·
+Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md)
 
 ## Repository layout
 
 ```
 apps/
-  api/        FastAPI — public search/answer API, IG webhooks, admin + DM approval queue
-  web/        Qwik City — fan-facing search-first pages (near-zero JS for the IG in-app browser)
-  workers/    RQ jobs — ingest, transcribe, OCR, enrich, index, Demand Radar, DM dispatch
+  api/        FastAPI — public search/answer API, webhooks, admin + agent + DM approval queue
+  web/        Qwik City — fan-facing search pages + the creator Studio dashboard
+  workers/    RQ jobs — ingest, transcribe, OCR, enrich, index, Demand Radar, native sync, DM dispatch
 packages/
-  core/       domain models (creator-scoped), DB, config, IG/YT clients, privacy, deep links
-  providers/  thin swappable interfaces: LLM, embeddings, transcription, OCR
-  retrieval/  chunking, hybrid search (FTS + pgvector + RRF), grounded answer card, intent
+  core/       domain models (creator-scoped), DB, config, platform clients, connector framework, billing, privacy
+  providers/  thin swappable interfaces: LLM, embeddings, transcription, OCR, rerank
+  retrieval/  chunking, hybrid search (FTS + pgvector + RRF + rerank), grounded answer card, intent
+  agent/      demand intelligence, reconciliation, repurposing/series, canonical answers, causal layer
 eval/         labelled-question harness — citation correctness gates DM automation
-infra/        docker-compose (pg16+pgvector, redis, minio), Dockerfiles, DB bootstrap
-tests/        pytest suite (runs against real Postgres+pgvector)
+infra/        docker-compose (pg16+pgvector, redis, minio), Dockerfiles, alembic migrations
+tests/        pytest suite (297 tests, runs against real Postgres+pgvector)
 ```
 
 ## Quick start

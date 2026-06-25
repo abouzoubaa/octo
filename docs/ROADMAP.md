@@ -1,5 +1,10 @@
 # Sift — Unified Roadmap
 
+> **Forward-looking document.** For what is actually built today, see
+> [`CURRENT_STATE.md`](CURRENT_STATE.md) — much of both axes below (the agent
+> feature layer, the cross-platform connector framework, the Studio dashboard) has
+> since shipped. This roadmap is kept for context and the still-open items.
+
 The single roadmap from the current **v1 proof-of-concept** to a complete,
 production-grade **AI chief of staff for creators**. It merges two axes of the
 same gap:
