@@ -292,6 +292,18 @@ def decide_dm(job_id: str, body: DmDecision, db: Session = Depends(get_db)) -> d
 # ------------------------------------------------------------------ Demand Radar
 
 
+def _reconcile_demand(coverage: dict | None) -> dict:
+    """Reconcile a demand topic against the creator's own archive: have they already
+    answered this (→ re-promote) or is it a genuine gap (→ make it)? Pure derivation
+    from the coverage already computed at radar-build time (strength + permalinks)."""
+    cov = coverage or {}
+    strength = cov.get("strength", 0.0)
+    label = "well" if strength >= 0.6 else "partial" if strength >= 0.35 else "gap"
+    permalinks = cov.get("permalinks") or []
+    return {"label": label, "strength": strength,
+            "covered_permalink": permalinks[0] if permalinks else None}
+
+
 @router.get("/creators/{creator_id}/radar")
 def radar_cards(creator_id: str, week: str | None = None,
                 db: Session = Depends(get_db)) -> list[dict]:
@@ -306,6 +318,7 @@ def radar_cards(creator_id: str, week: str | None = None,
         "id": c.id, "label": c.label, "week": c.week,
         "search_count": c.search_count, "comment_count": c.comment_count,
         "wow_change": c.wow_change, "coverage": c.coverage,
+        "reconciliation": _reconcile_demand(c.coverage),
         "audience_language": c.audience_language, "recommendation": c.recommendation,
         "linked_products": c.linked_products, "confidence": c.confidence,
         "creator_marked": c.creator_marked, "state": c.state.value,

@@ -52,6 +52,11 @@ export interface DemandCard {
   confidence: string | null;
   state: string;
   coverage: { gap?: boolean } | null;
+  reconciliation?: {
+    label: "well" | "partial" | "gap";
+    strength: number;
+    covered_permalink: string | null;
+  } | null;
   opportunity_score: number | null;
   source_breakdown?: Record<string, number> | null;
   demand_segment?: string | null;

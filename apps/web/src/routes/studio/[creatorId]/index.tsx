@@ -84,6 +84,13 @@ export const useSeries = routeAction$(async (data) => {
   return res ?? null;
 });
 
+// demand↔supply reconciliation: have they already answered this, or is it a gap?
+const RECONCILE: Record<string, { icon: string; text: string }> = {
+  well: { icon: "✓", text: "You've already answered this" },
+  partial: { icon: "◑", text: "Partly covered — go deeper or re-promote" },
+  gap: { icon: "🎯", text: "Genuine gap — you haven't covered this" },
+};
+
 const PLATFORM_ICON: Record<string, string> = {
   instagram: "📸",
   youtube: "▶️",
@@ -219,6 +226,19 @@ export default component$(() => {
             )}
           </div>
           <p class="caption">{c.label}</p>
+          {c.reconciliation && (
+            <p class="evidence">
+              {RECONCILE[c.reconciliation.label].icon} {RECONCILE[c.reconciliation.label].text}
+              {c.reconciliation.covered_permalink && (
+                <>
+                  {" — "}
+                  <a href={c.reconciliation.covered_permalink} target="_blank" rel="noreferrer">
+                    re-promote it →
+                  </a>
+                </>
+              )}
+            </p>
+          )}
           {c.recommendation && <p class="evidence">{c.recommendation}</p>}
           <div class="actions">
             {NEXT_STATE[c.state] && (

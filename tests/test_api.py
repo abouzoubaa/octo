@@ -124,6 +124,26 @@ def test_radar_exposes_source_breakdown(client, seeded_creator, session):
     assert any((c.get("source_breakdown") or {}).get("instagram") for c in cards)
 
 
+def test_reconcile_demand_classifies_coverage():
+    from cci_api.routers.admin import _reconcile_demand
+
+    assert _reconcile_demand({"strength": 0.8, "permalinks": ["http://x/p1"]}) == {
+        "label": "well", "strength": 0.8, "covered_permalink": "http://x/p1"}
+    assert _reconcile_demand({"strength": 0.4})["label"] == "partial"
+    gap = _reconcile_demand({"strength": 0.1})
+    assert gap["label"] == "gap" and gap["covered_permalink"] is None
+    assert _reconcile_demand(None)["label"] == "gap"  # no coverage → gap
+
+
+def test_radar_card_includes_reconciliation(client, seeded_creator):
+    from cci_workers.radar import build_radar
+
+    build_radar(seeded_creator.id, backlog=True)
+    cards = client.get(f"/admin/creators/{seeded_creator.id}/radar",
+                       headers=_admin_headers()).json()
+    assert cards and cards[0]["reconciliation"]["label"] in ("well", "partial", "gap")
+
+
 def test_public_api_key_scope_enforced(client, seeded_creator, session):
     """A key minted without the demand:read scope must be rejected (fail-closed)."""
     from cci_agent.team import mint_api_key
