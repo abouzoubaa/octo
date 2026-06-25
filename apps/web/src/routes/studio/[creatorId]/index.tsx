@@ -8,6 +8,7 @@ import {
 } from "@builder.io/qwik-city";
 import { adminGet, adminPost, type DemandCard } from "~/lib/admin-api";
 import { PLATFORM_ICON } from "~/lib/platform-icons";
+import { derivePlatforms, filterHref, filterQueue } from "~/lib/studio-filters";
 
 interface Briefing {
   week: string;
@@ -35,23 +36,12 @@ export const useOverview = routeLoader$(async ({ params, query }) => {
   ]);
   const creator = (creators ?? []).find((c) => c.id === cid);
   const allCards = radar ?? [];
-  // platform chips: every platform that contributed demand to any card (not search)
-  const platforms = [
-    ...new Set(
-      allCards.flatMap((c) =>
-        Object.keys(c.source_breakdown ?? {}).filter((k) => k !== "search" && k !== "unknown"),
-      ),
-    ),
-  ].sort();
+  const platforms = derivePlatforms(allCards);
   const platform = platforms.includes(query.get("platform") ?? "") ? query.get("platform") : null;
   const view = ["gap", "answered"].includes(query.get("view") ?? "") ? query.get("view") : null;
   // the queue is for OPEN opportunities — resolved ones (closed loop / dismissed)
   // drop out so acting on a card visibly removes it (loaders revalidate post-action)
-  let cards = allCards.filter((c) => c.state !== "loop_closed" && c.state !== "dismissed");
-  if (platform) cards = cards.filter((c) => (c.source_breakdown?.[platform] ?? 0) > 0);
-  if (view === "gap") cards = cards.filter((c) => c.reconciliation?.label === "gap");
-  else if (view === "answered")
-    cards = cards.filter((c) => c.reconciliation && c.reconciliation.label !== "gap");
+  const cards = filterQueue(allCards, { platform, view });
   return {
     cid,
     handle: creator?.handle ?? cid,
@@ -97,15 +87,6 @@ export const useSeries = routeAction$(async (data) => {
   }>(`/agent/demand/${data.topicId}/series`);
   return res ?? null;
 });
-
-// build a query string preserving whichever radar filters are set (so the platform
-// and gap/answered filters compose instead of clobbering each other)
-const filterHref = (platform: string | null, view: string | null): string => {
-  const p = new URLSearchParams();
-  if (platform) p.set("platform", platform);
-  if (view) p.set("view", view);
-  return p.toString() ? `?${p.toString()}` : "";
-};
 
 // demand↔supply reconciliation: have they already answered this, or is it a gap?
 const RECONCILE: Record<string, { icon: string; text: string }> = {

@@ -9,6 +9,7 @@ import {
   type ShiftOpportunity,
 } from "~/lib/admin-api";
 import { PLATFORM_ICON as ICON } from "~/lib/platform-icons";
+import { syncedLabel, topDemandByPlatform } from "~/lib/studio-filters";
 
 export const useCrossPlatform = routeLoader$(async ({ params, query }) => {
   const cid = params.creatorId;
@@ -28,17 +29,7 @@ export const useCrossPlatform = routeLoader$(async ({ params, query }) => {
     adminGet<DemandCard[]>(`/admin/creators/${cid}/radar`),
   ]);
   const connectedRows = connected ?? [];
-  // per-platform top demand: the 3 highest-ask topics that platform contributed to
-  const demandByPlatform: Record<string, { label: string; n: number }[]> = {};
-  for (const c of radar ?? []) {
-    for (const [plat, n] of Object.entries(c.source_breakdown ?? {})) {
-      if (plat === "search" || plat === "unknown" || n <= 0) continue;
-      (demandByPlatform[plat] ??= []).push({ label: c.label, n });
-    }
-  }
-  for (const plat of Object.keys(demandByPlatform)) {
-    demandByPlatform[plat] = demandByPlatform[plat].sort((a, b) => b.n - a.n).slice(0, 3);
-  }
+  const demandByPlatform = topDemandByPlatform(radar ?? []);
   return {
     cid,
     allPlatforms,
@@ -52,19 +43,6 @@ export const useCrossPlatform = routeLoader$(async ({ params, query }) => {
     shift: shift ?? [],
   };
 });
-
-// "synced 3h ago" / "never synced" — coarse relative time, computed server-side.
-function syncedLabel(iso: string | null | undefined): string {
-  if (iso === undefined) return "";
-  if (iso === null) return "never synced";
-  const secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (secs < 90) return "synced just now";
-  const mins = secs / 60;
-  if (mins < 90) return `synced ${Math.round(mins)}m ago`;
-  const hrs = mins / 60;
-  if (hrs < 36) return `synced ${Math.round(hrs)}h ago`;
-  return `synced ${Math.round(hrs / 24)}d ago`;
-}
 
 // (Re)group repurposed posts into canonical answers.
 export const useGroup = routeAction$(async (data) => {
