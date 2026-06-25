@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cci_core.agent_foundations import voice_prompt_block
+from cci_core.cost import meter_llm
 from cci_core.models import DemandTopic, Post, Transcript
 from cci_providers import get_llm
 
@@ -37,10 +38,10 @@ def repurpose(session: Session, post_id: str, target_format: str) -> dict:
     source = "\n".join(filter(None, [post.caption, transcript.text if transcript else None]))
     voice = voice_prompt_block(session, post.creator_id)
     try:
-        data = json.loads(get_llm().complete(
-            REPURPOSE_SYSTEM,
-            f"Target format: {target_format}\n\nSource:\n{source[:4000]}\n\n{voice}",
-            json_output=True, max_tokens=900))
+        user = f"Target format: {target_format}\n\nSource:\n{source[:4000]}\n\n{voice}"
+        raw = get_llm().complete(REPURPOSE_SYSTEM, user, json_output=True, max_tokens=900)
+        meter_llm(session, post.creator_id, user, raw, op="repurpose")
+        data = json.loads(raw)
     except Exception:  # noqa: BLE001
         data = {"format": target_format, "content": source[:500]}
     data["source_post_id"] = post_id
@@ -183,12 +184,14 @@ def build_series(session: Session, creator_id: str, topic: DemandTopic,
     Idempotent: re-running reuses the stub already saved for each part index, so a
     creator's edits are never clobbered."""
     try:
-        data = json.loads(get_llm().complete(
+        user = f"Topic: {topic.label}\nAudience asks: {topic.audience_language or []}"
+        raw = get_llm().complete(
             "Propose a content series arc for a recurring audience topic. JSON: "
             "{\"parts\": [\"part 1 …\", \"part 2 …\"], \"faq_post\": \"…\", "
             "\"dm_followup\": \"…\", \"offer_tie_in\": \"…\"}.",
-            f"Topic: {topic.label}\nAudience asks: {topic.audience_language or []}",
-            json_output=True, max_tokens=500))
+            user, json_output=True, max_tokens=500)
+        meter_llm(session, creator_id, user, raw, op="series")
+        data = json.loads(raw)
     except Exception:  # noqa: BLE001
         data = {"parts": [topic.label], "faq_post": "", "dm_followup": "", "offer_tie_in": ""}
     data["topic_id"] = topic.id

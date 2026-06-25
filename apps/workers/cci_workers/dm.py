@@ -135,6 +135,15 @@ def dispatch_approved(creator_id: str) -> dict:
     window = timedelta(days=s.dm_reply_window_days)
 
     with session_scope() as session:
+        # serialize dispatch per creator: the scheduler enqueues this every tick, so two
+        # runs can overlap (a slow run still draining when the next fires). Without a lock
+        # both compute the same hourly budget and can pick the same approved job → cap
+        # bypass + a duplicate DM. A transaction-scoped advisory lock (auto-released at
+        # commit) makes a second concurrent run a no-op instead.
+        if not _try_lock(session, creator_id):
+            log.info("dispatch_approved already running for %s — skipping", creator_id)
+            return {**stats, "skipped_locked": True}
+
         sent_last_hour = session.scalar(
             select(func.count(DmJob.id)).where(
                 DmJob.creator_id == creator_id,
@@ -185,7 +194,7 @@ def dispatch_approved(creator_id: str) -> dict:
             # not be sent through here. The capability registry is a real gate, not advisory.
             post = session.get(Post, comment.post_id) if comment.post_id else None
             platform = post.platform if post else "instagram"
-            if not _can_dm(platform):
+            if not _can_dm(session, creator_id, platform):
                 job.status = DmStatus.failed
                 job.error = f"{platform} connector lacks comment/message capability"
                 stats["failed"] += 1
@@ -207,10 +216,31 @@ def dispatch_approved(creator_id: str) -> dict:
     return stats
 
 
-def _can_dm(platform: str) -> bool:
-    """The platform's connector must advertise comment-reply AND messaging to send."""
+def _try_lock(session, creator_id: str) -> bool:
+    """Acquire a per-creator transaction-scoped advisory lock; False if another
+    dispatch already holds it. Auto-released when this transaction ends."""
+    import hashlib
+
+    from sqlalchemy import text
+
+    key = int.from_bytes(
+        hashlib.blake2b(creator_id.encode(), digest_size=8).digest(), "big", signed=True)
+    return bool(session.execute(
+        text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": key}).scalar())
+
+
+def _can_dm(session, creator_id: str, platform: str) -> bool:
+    """The account's connector must advertise comment-reply AND messaging to send.
+    Capability is per-account (e.g. a TikTok account approved for the full loop), so
+    we read the account's grant rather than assuming the platform default."""
+    from sqlalchemy import select
+
     from cci_core.connectors import capabilities_for
     from cci_core.connectors.base import COMMENTS_REPLY, MESSAGES_SEND
+    from cci_core.models import PlatformAccount
 
-    caps = capabilities_for(platform)
+    pa = session.scalar(select(PlatformAccount).where(
+        PlatformAccount.creator_id == creator_id, PlatformAccount.platform == platform))
+    full_loop = bool(pa.full_loop) if pa else False
+    caps = capabilities_for(platform, full_loop=full_loop)
     return COMMENTS_REPLY in caps and MESSAGES_SEND in caps

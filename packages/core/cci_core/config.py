@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     admin_token: str = "change-me"
     # Fernet key for at-rest encryption of OAuth tokens; empty = passthrough (dev)
     encryption_key: str = ""
+    # dedicated HMAC key for audience pseudonymisation; falls back to admin_token for
+    # backward compatibility. Rotating this is a data-migration event (breaks
+    # erase-by-pseudonym continuity), so set it once and keep it stable.
+    pseudonym_secret: str = ""
 
     def assert_production_secrets(self) -> list[str]:
         """Return a list of insecure-default secrets; empty when safe for prod."""
@@ -65,6 +69,10 @@ class Settings(BaseSettings):
     rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     cost_per_1k_tokens_cents: float = 0.5  # blended estimate for budgeting
+    # hard ceiling on a creator's monthly anonymous answer-card spend, independent of
+    # plan (the answer card is free, but a fan page can't be used to drive unbounded
+    # LLM cost). Over this, the public page degrades to plain search (no LLM).
+    anon_answer_monthly_cap_cents: float = 2000.0  # $20/creator/month
 
     # --- billing ----------------------------------------------------------------
     billing_provider: str = "fake"  # fake | stripe

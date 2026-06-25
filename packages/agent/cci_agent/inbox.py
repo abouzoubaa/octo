@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cci_core.models import Comment, DmJob, DmStatus, Playbook, WaitlistEntry
+from cci_core.safety import GUARD, wrap_untrusted
 from cci_providers import get_llm
 
 # inbox intent labels (a triage vocabulary on top of raw question/other detection)
@@ -55,7 +56,8 @@ def label_message(text: str, *, use_llm: bool = True) -> str:
     if not use_llm:
         return "other"
     try:
-        data = json.loads(get_llm().complete(LABEL_SYSTEM, text or "", json_output=True, max_tokens=80))
+        data = json.loads(get_llm().complete(
+            LABEL_SYSTEM + "\n" + GUARD, wrap_untrusted(text), json_output=True, max_tokens=80))
         label = data.get("label") if isinstance(data, dict) else None
         return label if label in LABELS else "other"
     except Exception:  # noqa: BLE001
@@ -104,7 +106,9 @@ def labelled_inbox(session: Session, creator_id: str, limit: int = 50) -> list[d
 def bounded_clarify(question: str) -> dict | None:
     """One either/or clarifying question to disambiguate a vague search."""
     try:
-        data = json.loads(get_llm().complete(CLARIFY_SYSTEM, question, json_output=True, max_tokens=120))
+        data = json.loads(get_llm().complete(
+            CLARIFY_SYSTEM + "\n" + GUARD, wrap_untrusted(question),
+            json_output=True, max_tokens=120))
         if data.get("question") and len(data.get("options", [])) == 2:
             return {"question": data["question"], "options": data["options"]}
     except Exception:  # noqa: BLE001

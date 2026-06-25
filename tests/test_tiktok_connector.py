@@ -130,3 +130,22 @@ def test_sync_native_tiktok_full_loop_persists_comments(creator, session):
                         account=_account())
     assert stats["posts"] == 2 and stats["comments"] == 4  # 2 comments per video
     assert stats["questions"] == 2  # one "which esim…?" per video
+
+
+def test_sync_native_builds_connector_from_account_full_loop(creator, session, monkeypatch):
+    """With no explicit connector, sync_native reads the account's full_loop grant to
+    decide whether to ingest comments (per-account capability, not per-platform)."""
+    from cci_core.models import OAuthToken, PlatformAccount
+    from cci_workers import sync_native as sn
+    from cci_workers.sync_native import sync_native
+
+    session.add(OAuthToken(creator_id=creator.id, platform="tiktok", access_token="tt-tok"))
+    session.add(PlatformAccount(creator_id=creator.id, platform="tiktok", mode="native",
+                                external_account_id="tt_open_id", full_loop=True))
+    session.commit()
+    # force the real-connector path (connector=None) but with a fake transport
+    monkeypatch.setattr(sn, "get_connector",
+                        lambda platform, *, full_loop=False: TikTokConnector(
+                            full_loop=full_loop, transport=FakeTransport()))
+    stats = sync_native(creator.id, "tiktok")  # no connector/account passed
+    assert stats["posts"] == 2 and stats["comments"] == 4  # full_loop → comments ingested

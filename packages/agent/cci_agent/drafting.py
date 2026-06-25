@@ -12,6 +12,7 @@ import json
 from sqlalchemy.orm import Session
 
 from cci_core.agent_foundations import best_offer_for_topics, get_rules, is_taboo, voice_prompt_block
+from cci_core.cost import meter_llm
 from cci_core.models import ContentDraft, DemandTopic
 from cci_providers import get_llm
 from cci_retrieval.search import search
@@ -77,7 +78,9 @@ def generate_draft(session: Session, creator_id: str, topic: DemandTopic,
         + (f"\nWeave in this current offer as the CTA if natural: {offer.name} ({offer.url})" if offer else "")
     )
     try:
-        data = json.loads(get_llm().complete(DRAFT_SYSTEM, user, json_output=True, max_tokens=800))
+        raw = get_llm().complete(DRAFT_SYSTEM, user, json_output=True, max_tokens=800)
+        meter_llm(session, creator_id, user, raw, op="draft")
+        data = json.loads(raw)
     except Exception:  # noqa: BLE001
         data = {"hooks": brief.get("audience_phrasing", [])[:3], "script": "", "caption": "",
                 "cta": brief.get("cta", "")}

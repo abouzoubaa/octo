@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cci_core.models import Claim, ClaimValidity, Post, Transcript
+from cci_core.safety import GUARD, wrap_untrusted
 from cci_providers import get_embedding_provider, get_llm
 
 log = logging.getLogger(__name__)
@@ -49,7 +50,8 @@ def extract_claims(session: Session, post: Post, persist: bool = True) -> list[C
         return []
 
     try:
-        data = json.loads(get_llm().complete(EXTRACT_SYSTEM, content[:4000],
+        data = json.loads(get_llm().complete(EXTRACT_SYSTEM + "\n" + GUARD,
+                                             wrap_untrusted(content[:4000]),
                                              json_output=True, max_tokens=700))
         items = data.get("claims", []) if isinstance(data, dict) else []
     except Exception as exc:  # noqa: BLE001 — extraction is best-effort

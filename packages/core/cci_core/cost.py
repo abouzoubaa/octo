@@ -36,14 +36,15 @@ def _month_start() -> datetime:
     return datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-def monthly_tokens(session: Session, creator_id: str) -> int:
+def monthly_tokens(session: Session, creator_id: str, *, op: str | None = None) -> int:
     rows = session.execute(
         select(Event.payload).where(
             Event.creator_id == creator_id, Event.kind == LLM_TOKENS,
             Event.ts >= _month_start())).all()
-    return sum((p or {}).get("tokens", 0) for (p,) in rows)
+    return sum((p or {}).get("tokens", 0) for (p,) in rows
+               if op is None or (p or {}).get("op") == op)
 
 
-def monthly_cost_cents(session: Session, creator_id: str) -> float:
+def monthly_cost_cents(session: Session, creator_id: str, *, op: str | None = None) -> float:
     per_1k = get_settings().cost_per_1k_tokens_cents
-    return round(monthly_tokens(session, creator_id) / 1000.0 * per_1k, 2)
+    return round(monthly_tokens(session, creator_id, op=op) / 1000.0 * per_1k, 2)

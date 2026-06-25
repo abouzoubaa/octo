@@ -32,17 +32,25 @@ def register(connector_cls: type[Connector]) -> type[Connector]:
     return connector_cls
 
 
-def get_connector(platform: str) -> Connector | None:
+def get_connector(platform: str, *, full_loop: bool = False) -> Connector | None:
+    """Resolve a connector. `full_loop` is a per-account grant (e.g. a TikTok account
+    approved for comments + messaging); it's forwarded to connectors that support
+    capability tiers and ignored by the rest."""
     cls = _REGISTRY.get(platform)
-    return cls() if cls else None
+    if cls is None:
+        return None
+    try:
+        return cls(full_loop=full_loop)  # tiered connectors (TikTok) accept the grant
+    except TypeError:
+        return cls()  # the rest have a uniform capability set
 
 
 def supported_platforms() -> list[str]:
     return sorted(_REGISTRY)
 
 
-def capabilities_for(platform: str) -> set[str]:
-    c = get_connector(platform)
+def capabilities_for(platform: str, *, full_loop: bool = False) -> set[str]:
+    c = get_connector(platform, full_loop=full_loop)
     return c.capabilities() if c else set()
 
 

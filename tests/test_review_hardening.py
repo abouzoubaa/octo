@@ -85,6 +85,29 @@ def test_eval_gate_fails_when_nothing_answerable(creator, session):
 # --------------------------------------------------- input bounds
 
 
+def test_dm_dispatch_is_serialized_per_creator(seeded_creator, session):
+    """A second concurrent dispatch for the same creator no-ops (advisory lock),
+    so the hourly cap can't be bypassed and a job can't be double-sent."""
+    import hashlib
+
+    from sqlalchemy import text
+
+    from cci_core.db import get_engine
+    from cci_workers.dm import dispatch_approved
+
+    key = int.from_bytes(
+        hashlib.blake2b(seeded_creator.id.encode(), digest_size=8).digest(), "big", signed=True)
+    conn = get_engine().connect()
+    trans = conn.begin()
+    assert conn.execute(text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": key}).scalar() is True
+    try:
+        stats = dispatch_approved(seeded_creator.id)  # lock held elsewhere → must skip
+        assert stats.get("skipped_locked") is True
+    finally:
+        trans.rollback()
+        conn.close()
+
+
 def test_public_api_answer_q_length_bounded(client, seeded_creator, session):
     from cci_agent.team import mint_api_key
 

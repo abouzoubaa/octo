@@ -36,18 +36,20 @@ def sync_native(creator_id: str, platform: str, *,
     """Backfill posts + comments from a native connector. Idempotent by
     (creator, platform, external_id) for posts and (creator, external_id) for
     comments. Returns counts."""
-    connector = connector or get_connector(platform)
-    if connector is None or not supports(connector, CONTENT_READ):
-        raise ValueError(f"platform '{platform}' has no native content connector")
     stats = {"platform": platform, "posts": 0, "comments": 0, "questions": 0}
-    read_comments = supports(connector, COMMENTS_READ)
 
     with session_scope() as session:
         creator = session.get(Creator, creator_id)
         if creator is None:
             raise ValueError("creator not found")
         account = account or _resolve_account(session, creator_id, platform)
-        _ensure_account(session, creator_id, platform, account)
+        pa = _ensure_account(session, creator_id, platform, account)
+        # build the connector from the account's capability grant (full-loop vs archive)
+        if connector is None:
+            connector = get_connector(platform, full_loop=bool(pa.full_loop))
+        if connector is None or not supports(connector, CONTENT_READ):
+            raise ValueError(f"platform '{platform}' has no native content connector")
+        read_comments = supports(connector, COMMENTS_READ)
 
         for item in connector.backfill_content(account):
             # each item runs in its own SAVEPOINT so one bad post/comment (a flush
@@ -139,18 +141,22 @@ def _resolve_account(session, creator_id: str, platform: str):
         OAuthToken.creator_id == creator_id, OAuthToken.platform == platform))
     return SimpleNamespace(
         external_account_id=(pa.external_account_id if pa else None),
-        access_token=(tok.access_token if tok else None))
+        access_token=(tok.access_token if tok else None),
+        full_loop=bool(pa.full_loop) if pa else False)
 
 
-def _ensure_account(session, creator_id: str, platform: str, account) -> None:
+def _ensure_account(session, creator_id: str, platform: str, account):
     from cci_core.connectors import capabilities_for
 
+    full_loop = bool(getattr(account, "full_loop", False))
     pa = session.scalar(select(PlatformAccount).where(
         PlatformAccount.creator_id == creator_id, PlatformAccount.platform == platform))
     if pa is None:
         pa = PlatformAccount(creator_id=creator_id, platform=platform, mode="native",
-                             status="connected",
+                             status="connected", full_loop=full_loop,
                              external_account_id=getattr(account, "external_account_id", None))
         session.add(pa)
-    pa.capabilities = sorted(capabilities_for(platform))
+    # capabilities reflect the account's grant (e.g. TikTok full-loop vs archive)
+    pa.capabilities = sorted(capabilities_for(platform, full_loop=bool(pa.full_loop)))
     session.flush()
+    return pa

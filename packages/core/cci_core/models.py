@@ -89,6 +89,10 @@ class PlatformAccount(Base):
     capabilities: Mapped[list | None] = mapped_column(JSON, nullable=True)  # cached from connector
     mode: Mapped[str] = mapped_column(String(16), default="native")  # native|import|forward
     status: Mapped[str] = mapped_column(String(16), default="connected")  # connected|archive_only|needs_reauth
+    # per-account capability grant: e.g. a TikTok account approved for the full loop
+    # (comments + messaging) vs the archive default. The connector instance is built
+    # from this so capability checks reflect the specific account, not the platform.
+    full_loop: Mapped[bool] = mapped_column(Boolean, default=False)
     connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)  # set by sync_native on each run

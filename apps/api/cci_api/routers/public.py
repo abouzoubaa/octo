@@ -78,6 +78,17 @@ def search_endpoint(
     answer_id: str | None = None
 
     if with_answer:
+        # the answer card is a free, anonymous LLM call — bound it by a per-creator
+        # monthly abuse ceiling (distinct from the plan cost cap, so free creators keep
+        # their answer card). Over the ceiling, degrade to plain search (no LLM).
+        from cci_core.config import get_settings
+        from cci_core.cost import monthly_cost_cents
+
+        cap = get_settings().anon_answer_monthly_cap_cents
+        if cap and monthly_cost_cents(db, creator.id, op="answer") >= cap:
+            with_answer = False
+
+    if with_answer:
         card = generate_answer(db, creator.id, q)
         results = card.results
         if card.state == "answered":

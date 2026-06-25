@@ -57,13 +57,20 @@ def test_dispatch_allows_instagram(seeded_creator, session, monkeypatch):
     assert stats["sent"] == 1  # IG has comment-reply + messaging
 
 
-def test_can_dm_capability_helper():
+def test_can_dm_capability_helper(creator, session):
     from cci_workers.dm import _can_dm
 
-    assert _can_dm("instagram") is True
-    assert _can_dm("tiktok") is False  # archive default
-    assert _can_dm("youtube") is False  # no DM surface
-    assert _can_dm("newsletter") is False  # demand source, no actions
+    assert _can_dm(session, creator.id, "instagram") is True
+    assert _can_dm(session, creator.id, "tiktok") is False  # archive default (no account)
+    assert _can_dm(session, creator.id, "youtube") is False  # no DM surface
+    assert _can_dm(session, creator.id, "newsletter") is False  # demand source, no actions
+
+    # a TikTok account approved for the full loop unlocks comment-reply + messaging
+    from cci_core.models import PlatformAccount
+    session.add(PlatformAccount(creator_id=creator.id, platform="tiktok",
+                                mode="native", full_loop=True))
+    session.flush()
+    assert _can_dm(session, creator.id, "tiktok") is True
 
 
 # ----------------------------------------------------- canonical idempotency (#1)

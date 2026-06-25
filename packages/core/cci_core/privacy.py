@@ -11,6 +11,14 @@ from cci_core.config import get_settings
 
 
 def pseudonymize(raw_identifier: str, creator_id: str) -> str:
-    """Stable per-creator pseudonym for an audience member."""
-    key = f"{get_settings().admin_token}:{creator_id}".encode()
+    """Stable per-creator pseudonym for an audience member.
+
+    Keyed on a dedicated `pseudonym_secret` so audience identity isn't tied to the
+    operator auth token — rotating the admin token must not break GDPR pseudonym
+    continuity, nor should leaking it let an attacker recompute pseudonyms. Falls
+    back to admin_token when unset, preserving existing pseudonyms.
+    """
+    s = get_settings()
+    secret = s.pseudonym_secret or s.admin_token
+    key = f"{secret}:{creator_id}".encode()
     return hmac.new(key, raw_identifier.encode(), hashlib.sha256).hexdigest()[:32]

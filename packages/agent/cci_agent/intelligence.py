@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cci_core.models import Comment, DemandTopic, ExternalSignal, Query
+from cci_core.safety import GUARD, wrap_untrusted
 from cci_providers import get_embedding_provider, get_llm
 
 EMOTIONS = ("anxiety", "confusion", "excitement", "frustration", "neutral")
@@ -43,8 +44,9 @@ def score_sentiment(text: str, *, use_llm: bool = True) -> str:
     try:
         data = json.loads(get_llm().complete(
             "Classify the emotional tenor of an audience question into one of: "
-            "anxiety, confusion, excitement, frustration, neutral. JSON: {\"emotion\": \"...\"}.",
-            text or "", json_output=True, max_tokens=40))
+            "anxiety, confusion, excitement, frustration, neutral. JSON: {\"emotion\": \"...\"}.\n"
+            + GUARD,
+            wrap_untrusted(text), json_output=True, max_tokens=40))
         emotion = data.get("emotion") if isinstance(data, dict) else None
         return emotion if emotion in EMOTIONS else "neutral"
     except Exception:  # noqa: BLE001
@@ -129,8 +131,8 @@ def _name_persona(samples: list[str]) -> str:
     try:
         data = json.loads(get_llm().complete(
             "Name this audience segment in 2-4 words from their questions. "
-            "JSON: {\"name\": \"...\"}.",
-            "\n".join(f"- {s}" for s in samples), json_output=True, max_tokens=40))
+            "JSON: {\"name\": \"...\"}.\n" + GUARD,
+            wrap_untrusted("\n".join(f"- {s}" for s in samples)), json_output=True, max_tokens=40))
         return data.get("name") or "audience segment"
     except Exception:  # noqa: BLE001
         return samples[0][:40] if samples else "audience segment"
