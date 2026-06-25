@@ -111,13 +111,13 @@ class TikTokConnector(Connector):
         for _ in range(self._MAX_CONTENT_PAGES):
             items, cursor = self.sync_content(account, cursor)
             out.extend(items)
-            if not cursor:
+            if cursor is None:  # None = no more pages (a 0 cursor is still valid)
                 break
         return out
 
-    def sync_content(self, account, cursor: str | None = None):
+    def sync_content(self, account, cursor: int | str | None = None):
         body: dict[str, Any] = {"max_count": 20}
-        if cursor:
+        if cursor is not None:
             body["cursor"] = cursor
         data = self._t.post("video/list/", {"fields": _VIDEO_FIELDS}, body, self._token(account))
         payload = data.get("data", {}) or {}
@@ -134,7 +134,7 @@ class TikTokConnector(Connector):
         cursor = None
         for _ in range(self._MAX_COMMENT_PAGES):
             body: dict[str, Any] = {"video_id": content_external_id, "max_count": 50}
-            if cursor:
+            if cursor is not None:
                 body["cursor"] = cursor
             data = self._t.post("video/comment/list/", {}, body, self._token(account))
             payload = data.get("data", {}) or {}
@@ -150,7 +150,7 @@ class TikTokConnector(Connector):
                     content_external_id=content_external_id, kind="comment",
                 ))
             cursor = payload.get("cursor") if payload.get("has_more") else None
-            if not cursor:
+            if cursor is None:  # None = no more pages (a 0 cursor is still valid)
                 break
         return out
 

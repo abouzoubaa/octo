@@ -56,6 +56,27 @@ def test_archive_backfill_content_maps_videos():
     assert items[0].posted_at is not None  # epoch parsed
 
 
+class ZeroCursorTransport:
+    """First page returns cursor 0 with has_more=True — the walk must continue
+    (a 0 cursor is valid; only None means done)."""
+
+    def __init__(self):
+        self.pages = 0
+
+    def post(self, path, params, json, token):
+        assert path == "video/list/"
+        self.pages += 1
+        if self.pages == 1:
+            return {"data": {"videos": [{"id": "z1"}], "cursor": 0, "has_more": True}}
+        return {"data": {"videos": [{"id": "z2"}], "has_more": False}}
+
+
+def test_zero_cursor_does_not_stop_walk_early():
+    conn = TikTokConnector(transport=ZeroCursorTransport())
+    items = conn.backfill_content(_account())
+    assert [i.external_id for i in items] == ["z1", "z2"]  # both pages walked
+
+
 def test_archive_has_no_comment_access():
     conn = TikTokConnector(transport=FakeTransport())  # archive
     assert conn.backfill_interactions(_account(), "v1") == []  # no comment API in archive
