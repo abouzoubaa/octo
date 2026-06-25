@@ -5,6 +5,7 @@ import {
   adminPost,
   type CanonicalRow,
   type ConnectorRow,
+  type DemandCard,
   type ShiftOpportunity,
 } from "~/lib/admin-api";
 
@@ -17,14 +18,26 @@ export const useCrossPlatform = routeLoader$(async ({ params, query }) => {
     .filter((p) => p.capabilities.includes("content.read"))
     .map((p) => p.platform);
   const target = targets.includes(query.get("to") ?? "") ? query.get("to")! : (targets[0] ?? "tiktok");
-  const [connected, canonical, shift] = await Promise.all([
+  const [connected, canonical, shift, radar] = await Promise.all([
     adminGet<ConnectorRow[]>(`/admin/creators/${cid}/connectors`),
     adminGet<CanonicalRow[]>(`/agent/creators/${cid}/canonical`),
     adminGet<ShiftOpportunity[]>(
       `/agent/creators/${cid}/sift-and-shift?target_platform=${target}`,
     ),
+    adminGet<DemandCard[]>(`/admin/creators/${cid}/radar`),
   ]);
   const connectedRows = connected ?? [];
+  // per-platform top demand: the 3 highest-ask topics that platform contributed to
+  const demandByPlatform: Record<string, { label: string; n: number }[]> = {};
+  for (const c of radar ?? []) {
+    for (const [plat, n] of Object.entries(c.source_breakdown ?? {})) {
+      if (plat === "search" || plat === "unknown" || n <= 0) continue;
+      (demandByPlatform[plat] ??= []).push({ label: c.label, n });
+    }
+  }
+  for (const plat of Object.keys(demandByPlatform)) {
+    demandByPlatform[plat] = demandByPlatform[plat].sort((a, b) => b.n - a.n).slice(0, 3);
+  }
   return {
     cid,
     allPlatforms,
@@ -33,6 +46,7 @@ export const useCrossPlatform = routeLoader$(async ({ params, query }) => {
     connected: new Set(connectedRows.map((c) => c.platform)),
     // platform → last_synced_at ISO string (null = connected, never synced)
     synced: Object.fromEntries(connectedRows.map((c) => [c.platform, c.last_synced_at ?? null])),
+    demandByPlatform,
     canonical: canonical ?? [],
     shift: shift ?? [],
   };
@@ -147,6 +161,14 @@ export default component$(() => {
           <p class="evidence">
             {p.capabilities.map((c) => c.replace(".", " ")).join(" · ")}
           </p>
+          {(data.value.demandByPlatform[p.platform]?.length ?? 0) > 0 && (
+            <p class="evidence">
+              <strong>Top demand here:</strong>{" "}
+              {data.value.demandByPlatform[p.platform]
+                .map((d) => `${d.label} (${d.n})`)
+                .join(" · ")}
+            </p>
+          )}
           {data.value.connected.has(p.platform) && p.capabilities.includes("content.read") && (
             <div class="actions">
               <Form action={sync}>
