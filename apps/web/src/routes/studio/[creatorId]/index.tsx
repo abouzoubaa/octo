@@ -278,21 +278,23 @@ export default component$(() => {
                   <a href={c.reconciliation.covered_permalink} target="_blank" rel="noreferrer">
                     open it →
                   </a>
-                  {repromote.value?.ok &&
-                  repromote.value.topicId === c.id &&
-                  repromote.value.closed ? (
-                    <span class="open" style="margin-left:8px;">
-                      ✓ loop closed
-                    </span>
-                  ) : (
-                    <Form action={repromote} style="display:inline; margin-left:8px;">
-                      <input type="hidden" name="topicId" value={c.id} />
-                      <button class="pill-btn ghost" type="submit">
-                        ♻️ Close via re-promote
-                      </button>
-                    </Form>
-                  )}
                 </>
+              )}
+              {c.reconciliation.label !== "gap" && (
+                repromote.value?.ok &&
+                repromote.value.topicId === c.id &&
+                repromote.value.closed ? (
+                  <span class="open" style="margin-left:8px;">
+                    ✓ loop closed
+                  </span>
+                ) : (
+                  <Form action={repromote} style="display:inline; margin-left:8px;">
+                    <input type="hidden" name="topicId" value={c.id} />
+                    <button class="pill-btn ghost" type="submit">
+                      ♻️ Close via re-promote
+                    </button>
+                  </Form>
+                )
               )}
             </p>
           )}

@@ -1,7 +1,7 @@
 """Wave A: Demand Integrity, explainable Opportunity Score, north-star metric."""
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from cci_agent.demand import closed_loops, compute_integrity, opportunity_score, score_topic
 from cci_core.agent_foundations import transition_demand, utcnow
@@ -111,9 +111,13 @@ def test_repromote_closes_loop_and_logs_outcome(seeded_creator, session):
     assert o.creator_action == "repromote" and o.stage == "closed"
     assert o.demand_topic_id == t.id
 
-    # idempotent-ish: re-promoting an already-closed topic doesn't re-close it
+    # idempotent: re-promoting an already-closed topic doesn't re-close it AND
+    # doesn't write a second (phantom) Outcome row
     res2 = repromote_topic(session, t)
-    assert res2["closed"] is False  # already closed, no double-count
+    assert res2["closed"] is False and res2["outcome_id"] is None
+    n_outcomes = session.scalar(select(func.count(Outcome.id)).where(
+        Outcome.demand_topic_id == t.id))
+    assert n_outcomes == 1  # only the real close logged an outcome
 
 
 def test_closed_loops_window_excludes_old(seeded_creator, session):

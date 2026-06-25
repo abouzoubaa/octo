@@ -231,19 +231,21 @@ def repromote_topic(session: Session, topic: DemandTopic) -> dict:
     from cci_core.models import DemandState
 
     permalink = ((topic.coverage or {}).get("permalinks") or [None])[0]
+    # already closed or refused → no-op, and crucially no phantom Outcome row
+    if topic.state in (DemandState.loop_closed, DemandState.dismissed):
+        return {"outcome_id": None, "state": topic.state.value,
+                "closed": False, "permalink": permalink}
+
     outcome = record_outcome(session, topic.creator_id, source="demand",
                              demand_topic_id=topic.id, question_text=topic.label)
     advance_outcome(session, outcome.id, stage="closed", creator_action="repromote",
                     result={"via": "repromote", "permalink": permalink})
-    closed = False
-    if topic.state not in (DemandState.loop_closed, DemandState.dismissed):
-        topic.state = DemandState.loop_closed
-        topic.state_updated_at = datetime.now(timezone.utc)
-        topic.creator_marked = "made"
-        session.flush()
-        closed = True
+    topic.state = DemandState.loop_closed
+    topic.state_updated_at = datetime.now(timezone.utc)
+    topic.creator_marked = "made"
+    session.flush()
     return {"outcome_id": outcome.id, "state": topic.state.value,
-            "closed": closed, "permalink": permalink}
+            "closed": True, "permalink": permalink}
 
 
 def closed_loops(session: Session, creator_id: str, *, weeks: int = 8) -> dict:
