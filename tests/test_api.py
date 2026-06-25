@@ -144,6 +144,19 @@ def test_radar_card_includes_reconciliation(client, seeded_creator):
     assert cards and cards[0]["reconciliation"]["label"] in ("well", "partial", "gap")
 
 
+def test_repromote_endpoint_closes_loop(client, seeded_creator, session):
+    from cci_core.models import DemandState, DemandTopic
+
+    t = DemandTopic(creator_id=seeded_creator.id, label="packing", week="2026-W24",
+                    state=DemandState.new, coverage={"strength": 0.7, "permalinks": ["u"]})
+    session.add(t)
+    session.commit()
+    r = client.post(f"/agent/demand/{t.id}/repromote", headers=_admin_headers())
+    assert r.status_code == 200
+    body = r.json()
+    assert body["state"] == "loop_closed" and body["closed"] is True
+
+
 def test_public_api_key_scope_enforced(client, seeded_creator, session):
     """A key minted without the demand:read scope must be rejected (fail-closed)."""
     from cci_agent.team import mint_api_key

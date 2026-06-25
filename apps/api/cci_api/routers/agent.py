@@ -60,6 +60,17 @@ def transition(topic_id: str, body: TransitionIn, db: Session = Depends(get_db))
             "published_post_id": topic.published_post_id}
 
 
+@router.post("/demand/{topic_id}/repromote")
+def repromote(topic_id: str, db: Session = Depends(get_db)) -> dict:
+    """Close a loop by re-promoting already-made content (records an Outcome)."""
+    from cci_agent.demand import repromote_topic
+
+    topic = db.get(DemandTopic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail="demand topic not found")
+    return repromote_topic(db, topic)
+
+
 @router.get("/creators/{creator_id}/north-star")
 def north_star(creator_id: str, weeks: int = 8, db: Session = Depends(get_db)) -> dict:
     """Closed demand loops per active creator per week — the company metric."""

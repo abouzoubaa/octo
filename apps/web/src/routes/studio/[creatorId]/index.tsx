@@ -71,6 +71,14 @@ export const useDraft = routeAction$(async (data) => {
   return { ok: res !== null, draftId: res?.draft_id };
 });
 
+// Close a loop by re-promoting already-made content (logs an Outcome)
+export const useRepromote = routeAction$(async (data) => {
+  const res = await adminPost<{ closed: boolean; state: string }>(
+    `/agent/demand/${data.topicId}/repromote`,
+  );
+  return { ok: res !== null, closed: res?.closed ?? false, topicId: data.topicId as string };
+});
+
 // Propose a multi-part series arc for a recurring-demand topic
 export const useSeries = routeAction$(async (data) => {
   const res = await adminPost<{
@@ -115,6 +123,7 @@ export default component$(() => {
   const transition = useTransition();
   const draft = useDraft();
   const series = useSeries();
+  const repromote = useRepromote();
   const m = (o.value.metrics ?? {}) as any;
 
   return (
@@ -233,8 +242,22 @@ export default component$(() => {
                 <>
                   {" — "}
                   <a href={c.reconciliation.covered_permalink} target="_blank" rel="noreferrer">
-                    re-promote it →
+                    open it →
                   </a>
+                  {repromote.value?.ok &&
+                  repromote.value.topicId === c.id &&
+                  repromote.value.closed ? (
+                    <span class="open" style="margin-left:8px;">
+                      ✓ loop closed
+                    </span>
+                  ) : (
+                    <Form action={repromote} style="display:inline; margin-left:8px;">
+                      <input type="hidden" name="topicId" value={c.id} />
+                      <button class="pill-btn ghost" type="submit">
+                        ♻️ Close via re-promote
+                      </button>
+                    </Form>
+                  )}
                 </>
               )}
             </p>

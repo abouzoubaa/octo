@@ -88,6 +88,34 @@ def test_closed_loops_counts_only_closed(seeded_creator, session):
     assert ns["closed_loops_per_week"] == round(1 / 8, 2)
 
 
+def test_repromote_closes_loop_and_logs_outcome(seeded_creator, session):
+    from cci_agent.demand import repromote_topic
+    from cci_core.models import Outcome
+
+    # a well-covered topic (the answer already exists) in an early state
+    t = DemandTopic(creator_id=seeded_creator.id, label="esim guide", week="2026-W24",
+                    state=DemandState.new, search_count=9,
+                    coverage={"strength": 0.8, "permalinks": ["https://x/p1"]})
+    session.add(t)
+    session.flush()
+
+    res = repromote_topic(session, t)
+    assert res["closed"] is True and res["state"] == "loop_closed"
+    assert res["permalink"] == "https://x/p1"
+    session.flush()
+
+    # the loop now counts toward the north-star metric
+    assert closed_loops(session, seeded_creator.id, weeks=8)["closed_loops"] >= 1
+    # an Outcome was logged with the re-promote action
+    o = session.get(Outcome, res["outcome_id"])
+    assert o.creator_action == "repromote" and o.stage == "closed"
+    assert o.demand_topic_id == t.id
+
+    # idempotent-ish: re-promoting an already-closed topic doesn't re-close it
+    res2 = repromote_topic(session, t)
+    assert res2["closed"] is False  # already closed, no double-count
+
+
 def test_closed_loops_window_excludes_old(seeded_creator, session):
     t = DemandTopic(creator_id=seeded_creator.id, label="old", week="2026-W01",
                     state=DemandState.published)
