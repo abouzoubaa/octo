@@ -5,7 +5,7 @@ agentic DM, Loop-Closer, …) call into. Operator/creator-authenticated.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -246,7 +246,8 @@ def update_rules(creator_id: str, body: RulesIn, db: Session = Depends(get_db)) 
 
 
 @router.get("/creators/{creator_id}/outcomes")
-def list_outcomes(creator_id: str, stage: str | None = None, limit: int = 50,
+def list_outcomes(creator_id: str, stage: str | None = None,
+                  limit: int = Query(50, ge=1, le=200),
                   db: Session = Depends(get_db)) -> list[dict]:
     stmt = select(Outcome).where(Outcome.creator_id == creator_id)
     if stage:

@@ -36,7 +36,10 @@ def verify(
 async def receive(request: Request) -> dict:
     body = await request.body()
     _verify_signature(request.headers.get("x-hub-signature-256", ""), body)
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="invalid JSON body")
 
     queued = 0
     for entry in payload.get("entry", []):
@@ -68,9 +71,13 @@ def _claim_event(platform: str, external_id: str | None) -> bool:
 
 
 def _verify_signature(header: str, body: bytes) -> None:
-    secret = get_settings().ig_app_secret
-    if not secret:  # local dev without an app secret
-        return
+    settings = get_settings()
+    secret = settings.ig_app_secret
+    if not secret:
+        # fail closed in production: never process unsigned webhook bodies
+        if not settings.debug:
+            raise HTTPException(status_code=503, detail="webhook signing not configured")
+        return  # local dev only (debug) — accept unsigned
     expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(header, expected):
         raise HTTPException(status_code=403, detail="bad signature")

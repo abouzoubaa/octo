@@ -38,7 +38,7 @@ GATE_NO_ANSWER = 0.80
 def run_eval(creator_id: str) -> dict:
     results = {
         "top3": {"hit": 0, "total": 0, "misses": []},
-        "citations": {"correct": 0, "total": 0, "wrong": []},
+        "citations": {"correct": 0, "total": 0, "holdout": 0, "wrong": []},
         "no_answer": {"correct": 0, "total": 0, "wrong": []},
     }
     with session_scope() as session:
@@ -68,6 +68,7 @@ def run_eval(creator_id: str) -> dict:
                 results["top3"]["misses"].append(q.question)
 
             if q.holdout:  # citation gate runs on the held-out subset
+                results["citations"]["holdout"] += 1
                 card = generate_answer(session, creator_id, q.question)
                 if card.state == AnswerState.answered.value:
                     results["citations"]["total"] += 1
@@ -82,6 +83,7 @@ def run_eval(creator_id: str) -> dict:
 
     summary = {
         "n_questions": sum(results[k]["total"] for k in results),
+        "holdout_questions": results["citations"]["holdout"],
         "top3_accuracy": rate(results["top3"], "hit"),
         "citation_correctness": rate(results["citations"], "correct"),
         "no_answer_accuracy": rate(results["no_answer"], "correct"),
@@ -127,6 +129,12 @@ def check_gates(summary: dict) -> list[str]:
         failures.append(f"top3_accuracy {summary['top3_accuracy']} < {GATE_TOP3}")
     if summary["citation_correctness"] is not None and summary["citation_correctness"] < GATE_CITATIONS:
         failures.append(f"citation_correctness {summary['citation_correctness']} < {GATE_CITATIONS}")
+    elif summary["citation_correctness"] is None and summary.get("holdout_questions", 0) > 0:
+        # vacuous pass: held-out questions exist but NONE were answerable → the gate
+        # that certifies citation quality has nothing to certify. Fail closed.
+        failures.append(
+            f"citation gate vacuous: {summary['holdout_questions']} held-out questions, "
+            "0 answered (corpus cites nothing)")
     if summary["no_answer_accuracy"] is not None and summary["no_answer_accuracy"] < GATE_NO_ANSWER:
         failures.append(f"no_answer_accuracy {summary['no_answer_accuracy']} < {GATE_NO_ANSWER}")
     return failures

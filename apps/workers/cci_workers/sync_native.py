@@ -50,36 +50,20 @@ def sync_native(creator_id: str, platform: str, *,
         _ensure_account(session, creator_id, platform, account)
 
         for item in connector.backfill_content(account):
-            post = session.scalar(select(Post).where(
-                Post.creator_id == creator_id, Post.platform == platform,
-                Post.external_id == item.external_id))
-            if post is None:
-                post = Post(creator_id=creator_id, platform=platform,
-                            external_id=item.external_id)
-                session.add(post)
-                stats["posts"] += 1
-            post.type = item.kind
-            post.caption = item.caption
-            post.permalink = item.permalink
-            post.posted_at = item.posted_at
-            if item.caption:
-                post.language = detect_language(item.caption)
-            session.flush()
-
-            if read_comments:
-                # one comments-disabled video (YouTube 403) or a transient fetch
-                # error must not abort the whole channel backfill — skip and go on.
-                try:
-                    interactions = connector.backfill_interactions(account, item.external_id)
-                except Exception as exc:  # noqa: BLE001
-                    log.warning("interactions fetch failed for %s/%s: %s",
-                                platform, item.external_id, exc)
-                    continue
-                for it in interactions:
-                    created, is_question = _upsert_comment(session, creator_id, post.id, it)
-                    if created:
-                        stats["comments"] += 1
-                        stats["questions"] += int(is_question)
+            # each item runs in its own SAVEPOINT so one bad post/comment (a flush
+            # error, a concurrent-insert IntegrityError, a classifier blow-up) rolls
+            # back just that item and the channel backfill continues. Stats are only
+            # counted after the nested transaction commits.
+            try:
+                with session.begin_nested():
+                    delta = _sync_one(session, connector, account, creator_id,
+                                      platform, item, read_comments)
+                stats["posts"] += delta["posts"]
+                stats["comments"] += delta["comments"]
+                stats["questions"] += delta["questions"]
+            except Exception as exc:  # noqa: BLE001
+                log.warning("sync item failed for %s/%s: %s",
+                            platform, item.external_id, exc)
 
         # stamp the sync so the dashboard can show "last synced" per connector
         pa = session.scalar(select(PlatformAccount).where(
@@ -88,6 +72,43 @@ def sync_native(creator_id: str, platform: str, *,
             pa.last_synced_at = datetime.now(timezone.utc)
     log.info("native sync %s for %s: %s", platform, creator_id, stats)
     return stats
+
+
+def _sync_one(session, connector, account, creator_id: str, platform: str, item,
+              read_comments: bool) -> dict:
+    """Persist one piece of content + its interactions. Runs inside a SAVEPOINT;
+    returns the stat deltas to apply on commit."""
+    delta = {"posts": 0, "comments": 0, "questions": 0}
+    post = session.scalar(select(Post).where(
+        Post.creator_id == creator_id, Post.platform == platform,
+        Post.external_id == item.external_id))
+    if post is None:
+        post = Post(creator_id=creator_id, platform=platform, external_id=item.external_id)
+        session.add(post)
+        delta["posts"] = 1
+    post.type = item.kind
+    post.caption = item.caption
+    post.permalink = item.permalink
+    post.posted_at = item.posted_at
+    if item.caption:
+        post.language = detect_language(item.caption)
+    session.flush()
+
+    if read_comments:
+        # a comments-disabled video (YouTube 403) or transient fetch error skips
+        # comments for this item but keeps the post.
+        try:
+            interactions = connector.backfill_interactions(account, item.external_id)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("interactions fetch failed for %s/%s: %s",
+                        platform, item.external_id, exc)
+            interactions = []
+        for it in interactions:
+            created, is_question = _upsert_comment(session, creator_id, post.id, it)
+            if created:
+                delta["comments"] += 1
+                delta["questions"] += int(is_question)
+    return delta
 
 
 def _upsert_comment(session, creator_id: str, post_id: str, it) -> tuple[bool, bool]:

@@ -18,6 +18,13 @@ from cci_core.config import get_settings
 def create_app() -> FastAPI:
     configure_logging()
     init_sentry()
+    # fail closed in production: refuse to boot with insecure-default secrets
+    settings = get_settings()
+    if not settings.debug:
+        problems = settings.assert_production_secrets()
+        if problems:
+            raise RuntimeError(
+                "Refusing to start with insecure production config: " + "; ".join(problems))
     app = FastAPI(
         title="Creator Content Intelligence",
         version="0.1.0",

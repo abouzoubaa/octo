@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from cci_api.deps import require_admin
+from cci_api.deps import ensure_creator, require_admin, safe_enqueue
 from cci_core import events
 from cci_core.db import get_db
 from cci_core.models import (
@@ -92,6 +92,7 @@ class TokenIn(BaseModel):
 
 @router.put("/creators/{creator_id}/token")
 def set_token(creator_id: str, body: TokenIn, db: Session = Depends(get_db)) -> dict:
+    ensure_creator(db, creator_id)  # 404 instead of a silent no-op (FK fails at commit)
     existing = db.scalar(select(OAuthToken).where(
         OAuthToken.creator_id == creator_id, OAuthToken.platform == body.platform))
     if existing:
@@ -104,11 +105,12 @@ def set_token(creator_id: str, body: TokenIn, db: Session = Depends(get_db)) -> 
 
 
 @router.post("/creators/{creator_id}/backfill")
-def trigger_backfill(creator_id: str) -> dict:
+def trigger_backfill(creator_id: str, db: Session = Depends(get_db)) -> dict:
     from cci_workers.queue import INGEST, get_queue
 
-    job = get_queue(INGEST).enqueue("cci_workers.ingest_instagram.backfill_creator",
-                                    creator_id, job_timeout=3600 * 6)
+    ensure_creator(db, creator_id)
+    job = safe_enqueue(get_queue(INGEST), "cci_workers.ingest_instagram.backfill_creator",
+                       creator_id, job_timeout=3600 * 6)
     return {"job_id": job.id}
 
 
@@ -132,8 +134,8 @@ def trigger_native_sync(creator_id: str, platform: str = "youtube",
             detail=f"no {platform} authorization — connect the account first")
     account = db.scalar(select(PlatformAccount).where(
         PlatformAccount.creator_id == creator_id, PlatformAccount.platform == platform))
-    job = get_queue(INGEST).enqueue("cci_workers.sync_native.sync_native",
-                                    creator_id, platform, job_timeout=3600 * 3)
+    job = safe_enqueue(get_queue(INGEST), "cci_workers.sync_native.sync_native",
+                       creator_id, platform, job_timeout=3600 * 3)
     return {"job_id": job.id, "platform": platform,
             "channel": account.external_account_id if account else None}
 
@@ -155,18 +157,19 @@ def trigger_sync_all(creator_id: str, db: Session = Depends(get_db)) -> dict:
     dispatched = []
     for a in accounts:
         if a.platform in authorized and CONTENT_READ in capabilities_for(a.platform):
-            queue.enqueue("cci_workers.sync_native.sync_native",
-                          creator_id, a.platform, job_timeout=3600 * 3)
+            safe_enqueue(queue, "cci_workers.sync_native.sync_native",
+                         creator_id, a.platform, job_timeout=3600 * 3)
             dispatched.append(a.platform)
     return {"dispatched": sorted(dispatched), "count": len(dispatched)}
 
 
 @router.post("/creators/{creator_id}/process")
-def trigger_processing(creator_id: str) -> dict:
+def trigger_processing(creator_id: str, db: Session = Depends(get_db)) -> dict:
     from cci_workers.queue import INGEST, get_queue
 
-    job = get_queue(INGEST).enqueue("cci_workers.enrich.process_all_pending",
-                                    creator_id, job_timeout=3600 * 12)
+    ensure_creator(db, creator_id)
+    job = safe_enqueue(get_queue(INGEST), "cci_workers.enrich.process_all_pending",
+                       creator_id, job_timeout=3600 * 12)
     return {"job_id": job.id}
 
 
@@ -352,11 +355,13 @@ def mark_radar_card(card_id: str, body: RadarMark, db: Session = Depends(get_db)
 
 
 @router.post("/creators/{creator_id}/radar/build")
-def trigger_radar(creator_id: str, backlog: bool = False) -> dict:
+def trigger_radar(creator_id: str, backlog: bool = False,
+                  db: Session = Depends(get_db)) -> dict:
     from cci_workers.queue import PERIODIC, get_queue
 
-    job = get_queue(PERIODIC).enqueue("cci_workers.radar.build_radar", creator_id,
-                                      backlog=backlog)
+    ensure_creator(db, creator_id)
+    job = safe_enqueue(get_queue(PERIODIC), "cci_workers.radar.build_radar", creator_id,
+                       backlog=backlog)
     return {"job_id": job.id}
 
 
@@ -371,6 +376,7 @@ class ProductIn(BaseModel):
 
 @router.post("/creators/{creator_id}/products")
 def add_product(creator_id: str, body: ProductIn, db: Session = Depends(get_db)) -> dict:
+    ensure_creator(db, creator_id)
     product = Product(creator_id=creator_id, **body.model_dump())
     db.add(product)
     db.flush()

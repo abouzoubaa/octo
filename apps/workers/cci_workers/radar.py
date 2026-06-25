@@ -52,6 +52,16 @@ def build_radar(creator_id: str, *, backlog: bool = False) -> int:
         clusters = _cluster(texts)
         prev_counts = _previous_week_counts(session, creator_id, now)
 
+        # idempotent rebuild: clear this week's not-yet-acted-on cards first, so a
+        # re-run (weekly-job retry, or a manual + scheduled overlap) replaces rather
+        # than duplicates. Cards the creator has already moved past 'new' are kept.
+        from cci_core.models import DemandState
+        session.query(DemandTopic).filter(
+            DemandTopic.creator_id == creator_id,
+            DemandTopic.week == week,
+            DemandTopic.state == DemandState.new,
+        ).delete(synchronize_session=False)
+
         cards = 0
         for cluster in clusters:
             if len(cluster) < MIN_CLUSTER_SIZE and not backlog:

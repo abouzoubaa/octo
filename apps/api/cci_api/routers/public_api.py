@@ -6,7 +6,7 @@ as the rest of Sift.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -48,7 +48,8 @@ def demand(week: str | None = None, key: ApiKey = Depends(require_api_key),
 
 
 @router.get("/answer")
-def canonical_answer(q: str, key: ApiKey = Depends(require_api_key),
+def canonical_answer(q: str = Query(..., min_length=1, max_length=500),
+                     key: ApiKey = Depends(require_api_key),
                      db: Session = Depends(get_db)) -> dict:
     """Creator-authorized knowledge endpoint (scope: answer:read).
 
