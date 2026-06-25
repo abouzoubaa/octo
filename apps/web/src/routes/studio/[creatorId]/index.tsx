@@ -169,6 +169,13 @@ export default component$(() => {
         <div class="stat glass">
           <span class="stat-n">{o.value.northStar?.closed_loops_per_week ?? 0}</span>
           <span class="stat-l">loops closed/wk</span>
+          {o.value.northStar?.closed_breakdown &&
+            o.value.northStar.closed_loops > 0 && (
+              <span class="stat-sub">
+                {o.value.northStar.closed_breakdown.made} made ·{" "}
+                {o.value.northStar.closed_breakdown.repromoted} re-promoted
+              </span>
+            )}
         </div>
         <div class="stat glass">
           <span class="stat-n">{o.value.northStar?.in_flight_loops ?? 0}</span>

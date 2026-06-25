@@ -255,15 +255,23 @@ def closed_loops(session: Session, creator_id: str, *, weeks: int = 8) -> dict:
     acted → content published → askers notified). Search volume and draft counts
     can be gamed; closed loops measure the actual promise of Sift.
     """
-    from cci_core.models import DemandState
+    from cci_core.models import DemandState, Outcome
 
     since = datetime.now(timezone.utc) - timedelta(weeks=weeks)
-    closed = session.scalar(
-        select(func.count(DemandTopic.id)).where(
+    closed_ids = list(session.scalars(
+        select(DemandTopic.id).where(
             DemandTopic.creator_id == creator_id,
             DemandTopic.state == DemandState.loop_closed,
-            DemandTopic.state_updated_at >= since)
-    ) or 0
+            DemandTopic.state_updated_at >= since)))
+    closed = len(closed_ids)
+    # how each loop closed: re-promoted (existing content resurfaced) vs made-new
+    repromoted = 0
+    if closed_ids:
+        repromoted = session.scalar(
+            select(func.count(func.distinct(Outcome.demand_topic_id))).where(
+                Outcome.creator_id == creator_id,
+                Outcome.creator_action == "repromote",
+                Outcome.demand_topic_id.in_(closed_ids))) or 0
     # acted-but-not-yet-closed (in-flight loops) for context
     in_flight = session.scalar(
         select(func.count(DemandTopic.id)).where(
@@ -274,6 +282,7 @@ def closed_loops(session: Session, creator_id: str, *, weeks: int = 8) -> dict:
     return {
         "window_weeks": weeks,
         "closed_loops": closed,
+        "closed_breakdown": {"made": closed - repromoted, "repromoted": repromoted},
         "closed_loops_per_week": round(closed / weeks, 2),
         "in_flight_loops": in_flight,
     }

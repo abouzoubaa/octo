@@ -120,6 +120,27 @@ def test_repromote_closes_loop_and_logs_outcome(seeded_creator, session):
     assert n_outcomes == 1  # only the real close logged an outcome
 
 
+def test_closed_loops_breakdown_made_vs_repromoted(seeded_creator, session):
+    from cci_agent.demand import repromote_topic
+    from cci_core.agent_foundations import transition_demand
+
+    # one loop closed by making new content (no repromote outcome)
+    made = DemandTopic(creator_id=seeded_creator.id, label="made one", week="2026-W24",
+                       state=DemandState.published)
+    # one closed by re-promoting existing content
+    repro = DemandTopic(creator_id=seeded_creator.id, label="repromote one", week="2026-W24",
+                        state=DemandState.new, coverage={"strength": 0.8, "permalinks": ["u"]})
+    session.add_all([made, repro])
+    session.flush()
+    transition_demand(session, made, DemandState.loop_closed)
+    repromote_topic(session, repro)
+    session.flush()
+
+    ns = closed_loops(session, seeded_creator.id, weeks=8)
+    assert ns["closed_loops"] == 2
+    assert ns["closed_breakdown"] == {"made": 1, "repromoted": 1}
+
+
 def test_closed_loops_window_excludes_old(seeded_creator, session):
     t = DemandTopic(creator_id=seeded_creator.id, label="old", week="2026-W01",
                     state=DemandState.published)

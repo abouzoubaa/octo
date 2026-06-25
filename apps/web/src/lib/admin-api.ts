@@ -71,6 +71,7 @@ export interface NorthStar {
   closed_loops: number;
   closed_loops_per_week: number;
   in_flight_loops: number;
+  closed_breakdown?: { made: number; repromoted: number };
 }
 
 export interface ConnectorRow {

@@ -347,6 +347,7 @@ body {
 }
 .stat-n { font-size: 22px; font-weight: 800; color: var(--accent); letter-spacing: -0.02em; }
 .stat-l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.stat-sub { font-size: 10.5px; color: var(--accent); margin-top: 3px; font-weight: 600; }
 
 .actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
 .actions form { margin: 0; }
