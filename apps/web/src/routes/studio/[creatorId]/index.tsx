@@ -42,17 +42,20 @@ export const useOverview = routeLoader$(async ({ params, query }) => {
       ),
     ),
   ].sort();
-  const platform = query.get("platform");
-  const cards =
-    platform && platforms.includes(platform)
-      ? allCards.filter((c) => (c.source_breakdown?.[platform] ?? 0) > 0)
-      : allCards;
+  const platform = platforms.includes(query.get("platform") ?? "") ? query.get("platform") : null;
+  const view = ["gap", "answered"].includes(query.get("view") ?? "") ? query.get("view") : null;
+  let cards = allCards;
+  if (platform) cards = cards.filter((c) => (c.source_breakdown?.[platform] ?? 0) > 0);
+  if (view === "gap") cards = cards.filter((c) => c.reconciliation?.label === "gap");
+  else if (view === "answered")
+    cards = cards.filter((c) => c.reconciliation && c.reconciliation.label !== "gap");
   return {
     cid,
     handle: creator?.handle ?? cid,
     radar: cards,
     platforms,
-    platform: platform && platforms.includes(platform) ? platform : null,
+    platform,
+    view,
     briefing,
     metrics,
     northStar,
@@ -91,6 +94,15 @@ export const useSeries = routeAction$(async (data) => {
   }>(`/agent/demand/${data.topicId}/series`);
   return res ?? null;
 });
+
+// build a query string preserving whichever radar filters are set (so the platform
+// and gap/answered filters compose instead of clobbering each other)
+const filterHref = (platform: string | null, view: string | null): string => {
+  const p = new URLSearchParams();
+  if (platform) p.set("platform", platform);
+  if (view) p.set("view", view);
+  return p.toString() ? `?${p.toString()}` : "";
+};
 
 // demand↔supply reconciliation: have they already answered this, or is it a gap?
 const RECONCILE: Record<string, { icon: string; text: string }> = {
@@ -188,14 +200,17 @@ export default component$(() => {
 
       <p class="results-label">Opportunity queue</p>
       {o.value.platforms.length > 1 && (
-        <div class="actions" style="margin-bottom:10px;">
-          <Link href={`/studio/${o.value.cid}`} class={`pill-btn ${o.value.platform ? "ghost" : ""}`}>
+        <div class="actions" style="margin-bottom:8px;">
+          <Link
+            href={filterHref(null, o.value.view) || `/studio/${o.value.cid}`}
+            class={`pill-btn ${o.value.platform ? "ghost" : ""}`}
+          >
             All
           </Link>
           {o.value.platforms.map((p) => (
             <Link
               key={p}
-              href={`?platform=${p}`}
+              href={filterHref(p, o.value.view) || `/studio/${o.value.cid}`}
               class={`pill-btn ${o.value.platform === p ? "" : "ghost"}`}
             >
               {PLATFORM_ICON[p] ?? "🔌"} {p}
@@ -203,11 +218,30 @@ export default component$(() => {
           ))}
         </div>
       )}
+      <div class="actions" style="margin-bottom:10px;">
+        {[
+          { v: null, label: "Everything" },
+          { v: "gap", label: "🎯 Gaps" },
+          { v: "answered", label: "✓ Answered" },
+        ].map((f) => (
+          <Link
+            key={f.label}
+            href={filterHref(o.value.platform, f.v) || `/studio/${o.value.cid}`}
+            class={`pill-btn ${o.value.view === f.v ? "" : "ghost"}`}
+          >
+            {f.label}
+          </Link>
+        ))}
+      </div>
       {o.value.radar.length === 0 && (
         <div class="empty-state glass">
-          {o.value.platform
-            ? `No ${o.value.platform} demand this cycle.`
-            : "No opportunities yet — run Radar to populate."}
+          {o.value.view === "gap"
+            ? "No uncovered gaps here — your audience's asks are already answered."
+            : o.value.view === "answered"
+              ? "Nothing already-answered in this slice."
+              : o.value.platform
+                ? `No ${o.value.platform} demand this cycle.`
+                : "No opportunities yet — run Radar to populate."}
         </div>
       )}
       {o.value.radar.map((c) => (
