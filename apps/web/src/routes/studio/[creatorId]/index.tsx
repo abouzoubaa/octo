@@ -44,7 +44,9 @@ export const useOverview = routeLoader$(async ({ params, query }) => {
   ].sort();
   const platform = platforms.includes(query.get("platform") ?? "") ? query.get("platform") : null;
   const view = ["gap", "answered"].includes(query.get("view") ?? "") ? query.get("view") : null;
-  let cards = allCards;
+  // the queue is for OPEN opportunities — resolved ones (closed loop / dismissed)
+  // drop out so acting on a card visibly removes it (loaders revalidate post-action)
+  let cards = allCards.filter((c) => c.state !== "loop_closed" && c.state !== "dismissed");
   if (platform) cards = cards.filter((c) => (c.source_breakdown?.[platform] ?? 0) > 0);
   if (view === "gap") cards = cards.filter((c) => c.reconciliation?.label === "gap");
   else if (view === "answered")
@@ -169,13 +171,6 @@ export default component$(() => {
         <div class="stat glass">
           <span class="stat-n">{o.value.northStar?.closed_loops_per_week ?? 0}</span>
           <span class="stat-l">loops closed/wk</span>
-          {o.value.northStar?.closed_breakdown &&
-            o.value.northStar.closed_loops > 0 && (
-              <span class="stat-sub">
-                {o.value.northStar.closed_breakdown.made} made ·{" "}
-                {o.value.northStar.closed_breakdown.repromoted} re-promoted
-              </span>
-            )}
         </div>
         <div class="stat glass">
           <span class="stat-n">{o.value.northStar?.in_flight_loops ?? 0}</span>
@@ -186,6 +181,14 @@ export default component$(() => {
           <span class="stat-l">searches</span>
         </div>
       </section>
+
+      {o.value.northStar?.closed_breakdown && o.value.northStar.closed_loops > 0 && (
+        <p class="loop-breakdown">
+          {o.value.northStar.closed_loops} closed this window —{" "}
+          {o.value.northStar.closed_breakdown.made} made,{" "}
+          {o.value.northStar.closed_breakdown.repromoted} re-promoted
+        </p>
+      )}
 
       {o.value.briefing && (
         <section class="answer-card glass">
