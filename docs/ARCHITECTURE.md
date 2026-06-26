@@ -108,6 +108,107 @@ holdouts, baselines, CIs) measures whether it worked.
 
 ---
 
+## 3b. The agent layer — implemented feature catalog
+
+`cci_agent` is not one box: it is the full "chief of staff" feature set, ~70 endpoints
+across 18 modules. Every feature below is **implemented and exposed via the `agent`
+router** (`/agent/...`). Grouped by the agent-layer domains.
+
+### Foundations (§02)
+| Feature | Module · function | Endpoint |
+|---|---|---|
+| Demand clustering & dedup | `radar.build_radar` | `/admin/.../radar/build` |
+| Voice memory | `agent_foundations.capture_voice` | `POST/GET /creators/{id}/voice` |
+| Offer-awareness | `monetization.offer_cta`, offers | `POST/GET /creators/{id}/offers` |
+| Rules & preferences | `agent_foundations.get_rules` | `GET/PUT /creators/{id}/rules` |
+| Permission ladder | `permissions.*` | `GET/PUT /permissions`, `POST /automation/pause` |
+| Demand-item state machine | `agent_foundations.transition_demand` | `POST /demand/{id}/transition` |
+| Intent / outcome event log | `Outcome`, `events` | `GET /creators/{id}/outcomes` |
+
+### §03 Audience & demand intelligence
+| Feature | Module · function | Endpoint |
+|---|---|---|
+| The Briefing | `briefing.build_briefing` | `GET /creators/{id}/briefing` |
+| Content gap map | `briefing.content_gap_map` | `GET /creators/{id}/gap-map` |
+| Persona segmentation | `intelligence.segment_personas` | `GET /creators/{id}/personas` |
+| Sentiment & emotion | `intelligence.score_sentiment/sentiment_summary` | `GET /creators/{id}/sentiment` |
+| Trend detection | `intelligence.detect_trends` | `GET /creators/{id}/trends` |
+| Cross-platform demand synthesis | `radar` external signals + demand sources | `POST /creators/{id}/external-signal` |
+| Competitor demand radar *(opt-in)* | `growth.competitor_radar` | `GET /creators/{id}/competitor-radar` |
+| Opportunity Score (explainable) | `demand.opportunity_score/score_topic` | `GET /demand/{id}/opportunity` |
+| Demand Certificate | `demand.demand_certificate` | `GET /demand/{id}/certificate` |
+| Demand pipeline + north-star | `demand.closed_loops` | `GET /demand/pipeline`, `/north-star` |
+
+### §04 Content production
+| Feature | Module · function | Endpoint |
+|---|---|---|
+| Content briefs | `drafting.generate_brief` | (via draft) |
+| Draft generator (script + hooks) | `drafting.generate_draft` | `POST /demand/{id}/draft`, `GET /drafts`, `POST /drafts/{id}/decide` |
+| Creator recall search | `drafting.creator_recall` | `GET /creators/{id}/recall` |
+| Multi-format repurposing | `repurposing.repurpose` | `POST /posts/{id}/repurpose` |
+| Sift & Shift | `repurposing.sift_and_shift_opportunities/draft_shift` | `GET /sift-and-shift`, `POST /posts/{id}/shift` |
+| Series builder | `repurposing.build_series` | `POST /demand/{id}/series` |
+| Performance prediction | `scale.predict_performance` | `GET /drafts/{id}/predict` |
+| Content calendar / planner | `scale.content_calendar` | `GET /creators/{id}/calendar` |
+| Thumbnail & visual intelligence | `scale.thumbnail_concepts` | (via scale) |
+| Canonical answers (cross-platform) | `canonical.group_variants` | `POST/GET /creators/{id}/canonical` |
+| Versioned claim layer | `claims.extract_claims/supersede/detect_contradictions` | `GET /claims`, `/claims/{id}/approve`, `/detect-contradictions` |
+
+### §05 Engagement & inbox
+| Feature | Module · function | Endpoint |
+|---|---|---|
+| Intent-labelled queue | `inbox.labelled_inbox/label_message` | `GET /creators/{id}/inbox` |
+| Bounded clarifying question | `inbox.bounded_clarify` | (retrieval-side) |
+| No-answer waitlist | `inbox.add_to_waitlist` | (fan-side waitlist) |
+| Saved playbooks | `inbox.match_playbook` | `POST/GET /creators/{id}/playbooks` |
+| Reply assistant | `engagement.draft_reply` | (DM job draft) |
+| Agentic DM (approval mode) | `engagement.handle_dm_followup/can_auto_approve/bulk_approve` | `POST /creators/{id}/dm/bulk-approve` |
+| Community delegation | `engagement.delegation_candidate` | (DM dispatch) |
+| "Not now, but…" queue | `engagement.defer_question/due_deferrals` | `POST /defer`, `GET /deferrals/due` |
+| Loop-Closer | `engagement.close_loop` | `POST /demand/{id}/close-loop` |
+
+### §06 Monetization & revenue
+| Feature | Module · function | Endpoint |
+|---|---|---|
+| Auto-affiliate injection | `monetization.inject_affiliate/with_utm` | (caption-time) |
+| Offer-aware CTAs | `monetization.offer_cta` | (answers/recs) |
+| Affiliate optimisation | `revenue.affiliate_optimisation` | `GET /creators/{id}/affiliate-optimisation` |
+| Sponsor matchmaker & pitch | `revenue.sponsor_report` | `GET /creators/{id}/sponsor-report` |
+| Dynamic pricing & offer insights | `scale.pricing_insights` | `GET /creators/{id}/pricing-insights` |
+| Revenue forecasting & goals | `scale.revenue_forecast` | `GET /creators/{id}/revenue-forecast` |
+
+### §07 Brand & reputation
+| Feature | Module · function | Endpoint |
+|---|---|---|
+| Crisis / sentiment-shift detection | `brand.detect_crisis` | `GET /creators/{id}/crisis-check` |
+| Voice consistency scoring | `brand.voice_consistency_score` | `POST /creators/{id}/voice-score` |
+| Plagiarism / unauthorised-use *(opt-in)* | `growth.plagiarism_scan` | `POST /creators/{id}/plagiarism-scan` |
+
+### §08 Growth & strategy
+| Feature | Module · function | Endpoint |
+|---|---|---|
+| Content strategy advisor | `intelligence.strategy_advisor` | `POST /creators/{id}/strategy` |
+| Peer benchmarking *(opt-in)* | `growth.peer_benchmark` | `GET /creators/{id}/benchmark` |
+| Education & skill planning | `scale.education_plan` | `GET /creators/{id}/education-plan` |
+
+### §09 Operations & ecosystem
+| Feature | Module · function | Endpoint |
+|---|---|---|
+| Task / project export | `growth.export_task` | `POST /demand/{id}/export-task` |
+| Customer CRM | `crm.customer_profiles/lifecycle_segments` | `GET /creators/{id}/customers`, `/lifecycle` |
+| Team & role-based access | `team.add_member/has_capability/audit` | `POST/GET /creators/{id}/team` |
+| Public API & dev ecosystem | `team.mint_api_key/verify_api_key` + `public_api` | `POST /api-keys`, `GET /v1/public/*` |
+
+### Causal layer (cross-cutting measurement)
+| Feature | Module · function | Endpoint |
+|---|---|---|
+| Interventions, holdouts, lift, CIs | `causal.create_intervention/holdout_lift/matched_baseline/performance_interval` | `GET /interventions`, `/lift`, `POST /interventions/{id}/outcome` |
+
+> *Scaffolded* features (peer benchmarking, competitor radar, plagiarism) ship the
+> opt-in gate, the privacy guarantee (topic-level/aggregate only, never identity
+> matching), and the response shape, returning the creator's own stats vs placeholder
+> aggregates until a real multi-creator panel exists.
+
 ## 4. Jobs, queues & the scheduler
 
 Three RQ lanes keep a heavy backfill from starving the DM loop:
