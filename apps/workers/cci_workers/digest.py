@@ -58,22 +58,34 @@ def render_digest(creator_id: str) -> str | None:
         return "\n".join(lines)
 
 
+def _deliver(creator_id: str, subject: str, body: str) -> bool:
+    """Email the rendered text to the creator when SMTP + an address are configured;
+    otherwise log it (dev / unconfigured / send failure — the content is never lost)."""
+    from cci_core.mailer import send_email
+
+    with session_scope() as session:
+        creator = session.get(Creator, creator_id)
+        email = creator.email if creator else None
+    if email and send_email(email, subject, body):
+        log.info("emailed '%s' to %s", subject, email)
+        return True
+    log.info("%s for %s:\n%s", subject, creator_id, body)
+    return True
+
+
 def send_digest(creator_id: str) -> bool:
-    """v1 sender: log to console/worker output. Swap for email/DM transport later."""
+    """Weekly digest: emailed when configured, logged otherwise."""
     digest = render_digest(creator_id)
     if digest is None:
         log.info("no radar cards this week for %s — no digest", creator_id)
         return False
-    log.info("DIGEST for %s:\n%s", creator_id, digest)
-    return True
+    return _deliver(creator_id, "Your Demand Radar digest", digest)
 
 
 def send_briefing(creator_id: str) -> bool:
     """Agent-layer (v1.5): the richer Briefing — top demand + hooks + gaps +
     re-promotion pick + one drafted post. Replaces the plain digest once the
     agent layer is enabled for a creator."""
-    from cci_core.db import session_scope
-
     with session_scope() as session:
         from cci_agent.briefing import build_briefing, render_briefing_text
 
@@ -81,5 +93,5 @@ def send_briefing(creator_id: str) -> bool:
         if briefing is None:
             log.info("no demand signal this week for %s — no briefing", creator_id)
             return False
-        log.info("BRIEFING for %s:\n%s", creator_id, render_briefing_text(briefing))
-    return True
+        text = render_briefing_text(briefing)
+    return _deliver(creator_id, "Your weekly briefing", text)

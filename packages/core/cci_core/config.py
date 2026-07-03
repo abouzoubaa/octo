@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     s3_access_key: str = "minioadmin"
     s3_secret_key: str = "minioadmin"
 
+    # outbound email (weekly digest/briefing delivery). Unset host = log transport,
+    # so local dev and tests stay dependency-free.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "Sift <digest@localhost>"
+
     # --- serving --------------------------------------------------------------
     public_base_url: str = "http://localhost:8000"
     api_host: str = "0.0.0.0"

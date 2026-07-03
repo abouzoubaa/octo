@@ -29,6 +29,7 @@ class CreatorIn(BaseModel):
     ig_user_id: str | None = None
     yt_channel_id: str | None = None
     niche: str | None = None
+    email: str | None = None  # digest/briefing delivery address
 
 
 @router.post("/creators")

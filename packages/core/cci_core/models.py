@@ -63,6 +63,7 @@ class Creator(Base):
     display_name: Mapped[str] = mapped_column(String(128))
     ig_user_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     yt_channel_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(256), nullable=True)  # digest delivery
     status: Mapped[CreatorStatus] = mapped_column(
         Enum(CreatorStatus, native_enum=False), default=CreatorStatus.onboarding
     )

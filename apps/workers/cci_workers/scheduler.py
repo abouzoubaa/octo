@@ -12,13 +12,16 @@ from sqlalchemy import select
 
 from cci_core.db import session_scope
 from cci_core.models import Creator, CreatorStatus
-from cci_workers.queue import PERIODIC, REALTIME, get_queue
+from cci_workers.queue import DEFAULT_RETRY, PERIODIC, REALTIME, get_queue
 
 
 def tick() -> None:
     """Idempotent scheduler tick — enqueue due jobs for every active creator.
 
     Run from cron / RQ scheduler every 5 minutes; cheap no-op when nothing is due.
+    Scheduled jobs carry the default retry policy so a transient failure (platform
+    5xx, DB hiccup) self-heals; the DM dispatcher is deliberately retry-free — the
+    next tick re-runs it and the per-creator advisory lock makes overlap safe.
     """
     now = datetime.now(timezone.utc)
     with session_scope() as session:
@@ -35,11 +38,13 @@ def tick() -> None:
 
         # hourly incremental sync (Instagram's richer legacy path: media + watermarks)
         if now.minute < 5:
-            periodic.enqueue("cci_workers.ingest_instagram.incremental_sync", creator_id)
+            periodic.enqueue("cci_workers.ingest_instagram.incremental_sync", creator_id,
+                             retry=DEFAULT_RETRY)
 
         # weekly radar + digest: Monday 07:00 UTC
         if now.weekday() == 0 and now.hour == 7 and now.minute < 5:
-            job = periodic.enqueue("cci_workers.radar.build_radar", creator_id)
+            job = periodic.enqueue("cci_workers.radar.build_radar", creator_id,
+                                   retry=DEFAULT_RETRY)
             periodic.enqueue("cci_workers.digest.send_digest", creator_id, depends_on=job)
 
     # hourly native-connector incremental sync (YouTube etc.). Instagram is covered
@@ -50,7 +55,7 @@ def tick() -> None:
 
     # daily OAuth token refresh (global, not per-creator): 06:00 UTC
     if now.hour == 6 and now.minute < 5:
-        periodic.enqueue("cci_workers.refresh_tokens.refresh_due_tokens")
+        periodic.enqueue("cci_workers.refresh_tokens.refresh_due_tokens", retry=DEFAULT_RETRY)
 
 
 def enqueue_native_syncs(periodic) -> int:
@@ -76,7 +81,8 @@ def enqueue_native_syncs(periodic) -> int:
             continue  # covered by ingest_instagram.incremental_sync
         if CONTENT_READ not in capabilities_for(platform):
             continue
-        periodic.enqueue("cci_workers.sync_native.sync_native", creator_id, platform)
+        periodic.enqueue("cci_workers.sync_native.sync_native", creator_id, platform,
+                         retry=DEFAULT_RETRY)
         n += 1
     return n
 
