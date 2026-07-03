@@ -55,6 +55,9 @@ class AnswerOut(BaseModel):
     confidence: float
     answer_id: str | None = None
     freshness: list[dict] = []  # 'the creator later updated this' notes (claim layer)
+    # bounded clarifying question (agent §05): one either/or to disambiguate a vague
+    # search when there's no strong answer — not open chat. {question, options: [a, b]}
+    clarify: dict | None = None
 
 
 class SearchResponse(BaseModel):
@@ -94,11 +97,17 @@ def search_endpoint(
         if card.state == "answered":
             persisted = persist_answer(db, creator.id, card)
             answer_id = persisted.id
+        clarify = None
+        if card.state == "no_strong_answer":
+            from cci_agent.inbox import bounded_clarify
+
+            clarify = bounded_clarify(q)
         answer_out = AnswerOut(
             state=card.state, text=card.text,
             citations=[CitationOut(**c) for c in card.citations],
             confidence=round(card.confidence, 3), answer_id=answer_id,
             freshness=_freshness_for(db, card),
+            clarify=clarify,
         )
     else:
         results = search(db, creator.id, q)

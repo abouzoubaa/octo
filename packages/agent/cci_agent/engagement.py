@@ -41,7 +41,7 @@ def draft_reply(session: Session, creator_id: str, creator_handle: str,
     Low confidence → archive-link fallback, never a fabricated answer.
     """
     s = get_settings()
-    card = generate_answer(session, creator_id, question)
+    card = generate_answer(session, creator_id, question, op="dm_answer")
     voice = voice_prompt_block(session, creator_id, kind="dm")  # tone hint (style only)
 
     if card.state == "answered" and card.confidence >= s.dm_min_confidence:

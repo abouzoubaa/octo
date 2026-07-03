@@ -37,12 +37,18 @@ def _month_start() -> datetime:
 
 
 def monthly_tokens(session: Session, creator_id: str, *, op: str | None = None) -> int:
-    rows = session.execute(
-        select(Event.payload).where(
-            Event.creator_id == creator_id, Event.kind == LLM_TOKENS,
-            Event.ts >= _month_start())).all()
-    return sum((p or {}).get("tokens", 0) for (p,) in rows
-               if op is None or (p or {}).get("op") == op)
+    """Month-to-date token total, aggregated in SQL — this runs on hot request paths
+    (the public answer ceiling checks it per search), so fetching and decoding every
+    event row in Python would grow linearly with the month's traffic."""
+    from sqlalchemy import func
+
+    stmt = select(func.coalesce(func.sum(
+        Event.payload["tokens"].as_integer()), 0)).where(
+        Event.creator_id == creator_id, Event.kind == LLM_TOKENS,
+        Event.ts >= _month_start())
+    if op is not None:
+        stmt = stmt.where(Event.payload["op"].as_string() == op)
+    return int(session.scalar(stmt) or 0)
 
 
 def monthly_cost_cents(session: Session, creator_id: str, *, op: str | None = None) -> float:

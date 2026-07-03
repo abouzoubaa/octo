@@ -378,6 +378,18 @@ def decide_draft(draft_id: str, body: DraftDecision, db: Session = Depends(get_d
             draft.script = body.edited_script
         elif draft.hooks:
             capture_voice(db, draft.creator_id, "hook", draft.hooks[0], source="approved")
+        # auto-affiliate injection at "caption time": approval is the last Sift-side
+        # step before the creator publishes (auto-posting is deliberately avoided), so
+        # append the approved affiliate links (+ disclosure) mapped to the draft's
+        # grounding posts here — the creator copies a ready, monetized caption.
+        if draft.script:
+            from cci_agent.monetization import inject_affiliate
+
+            for pid in draft.source_post_ids or []:
+                injected = inject_affiliate(db, pid, draft.script)
+                if injected != draft.script:
+                    draft.script = injected
+                    break  # one disclosure block; first grounded post with products wins
         draft.status = "approved"
     return {"id": draft.id, "status": draft.status}
 

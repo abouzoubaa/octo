@@ -1,4 +1,4 @@
-import { component$ } from "@builder.io/qwik";
+import { $, component$, useSignal } from "@builder.io/qwik";
 import { routeLoader$, Form, Link, type DocumentHead } from "@builder.io/qwik-city";
 import { ThemeToggle } from "~/components/theme-toggle";
 import { API_BASE, searchArchive, startHere, type SearchResponse, type StartPath } from "~/lib/api";
@@ -62,6 +62,59 @@ function saveResult(handle: string, postId: string, caption: string, url: string
     /* private mode */
   }
 }
+
+// No-answer waitlist (email-capture bridge): "want a heads-up when @creator covers
+// this?" — captures a lead, validates demand, feeds the gap map. Shows the cohort
+// size back ("N people want this") so waiting feels like joining, not shouting.
+export const WaitlistForm = component$<{ handle: string; topic: string }>(({ handle, topic }) => {
+  const email = useSignal("");
+  const cohort = useSignal<number | null>(null);
+  const error = useSignal(false);
+
+  const join = $(async () => {
+    if (!email.value.includes("@")) return;
+    try {
+      const resp = await fetch(`${API_BASE}/api/${handle}/waitlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.value.trim(), topic }),
+      });
+      if (!resp.ok) throw new Error(String(resp.status));
+      const body = await resp.json();
+      cohort.value = body.cohort_size ?? 1;
+    } catch {
+      error.value = true;
+    }
+  });
+
+  return (
+    <div class="waitlist">
+      {cohort.value === null ? (
+        <>
+          <p class="evidence">Want a heads-up when @{handle} covers this?</p>
+          <div class="waitlist-row">
+            <input
+              class="waitlist-input"
+              type="email"
+              placeholder="you@email.com"
+              bind:value={email}
+              aria-label="Email for a heads-up"
+            />
+            <button class="pill-btn" type="button" onClick$={join}>
+              Notify me
+            </button>
+          </div>
+          {error.value && <p class="evidence">Couldn't join right now — try again.</p>}
+        </>
+      ) : (
+        <p class="evidence">
+          ✓ You're on the list — {cohort.value} {cohort.value === 1 ? "person" : "people"} waiting
+          on this. @{handle} sees it as demand.
+        </p>
+      )}
+    </div>
+  );
+});
 
 export default component$(() => {
   const search = useSearch();
@@ -162,6 +215,23 @@ export default component$(() => {
             Nothing in the archive answers that directly — try different words, or browse the
             closest posts below.
           </p>
+          {data.answer.clarify && data.answer.clarify.options.length === 2 && (
+            <div class="clarify">
+              <p class="evidence">{data.answer.clarify.question}</p>
+              <div class="actions">
+                {data.answer.clarify.options.map((opt) => (
+                  <a
+                    key={opt}
+                    class="pill-btn ghost"
+                    href={`?q=${encodeURIComponent(`${q} ${opt}`)}`}
+                  >
+                    {opt}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+          <WaitlistForm handle={handle} topic={q} />
         </section>
       )}
 

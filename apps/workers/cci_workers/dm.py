@@ -82,7 +82,29 @@ def handle_comment_event(creator_id: str, comment_external_id: str, comment_text
 
 def _prepare_dm(session, creator: Creator, comment: Comment, question: str) -> DmJob:
     s = get_settings()
-    card = generate_answer(session, creator.id, question)
+
+    # saved playbook first: "when I get this kind of question, do this" — a matched
+    # template handles the recurring case consistently (and skips an LLM call).
+    # Still approval mode; the operator sees it in the same queue.
+    from cci_agent.inbox import match_playbook
+
+    playbook = match_playbook(session, creator.id, question, intent=comment.intent)
+    if playbook is not None and (playbook.dm_template or playbook.public_reply_template):
+        link = search_link(creator.handle, question)
+        job = DmJob(
+            creator_id=creator.id,
+            comment_id=comment.id,
+            status=DmStatus.pending_approval,
+            public_reply=playbook.public_reply_template or "Check your DMs! 📩",
+            dm_text=(playbook.dm_template or "").replace("{link}", link) or link,
+            deep_link=link,
+            confidence=None,
+        )
+        session.add(job)
+        session.flush()
+        return job
+
+    card = generate_answer(session, creator.id, question, op="dm_answer")
 
     query = Query(
         creator_id=creator.id, source=QuerySource.comment, text=question,

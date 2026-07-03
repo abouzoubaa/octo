@@ -109,7 +109,7 @@ stack = "".join([
     band("Application", "app", [
         "cci_retrieval<small>search · answer · chunking · indexer · intent</small>",
         "cci_agent — the agent layer<small>18 modules · ~70 endpoints · 7 domains (expanded in §4)</small>",
-        "cci_providers<small>llm · embeddings · stt · ocr · rerank · billing (fakes)</small>",
+        "cci_providers<small>llm · embeddings · stt · ocr · rerank (offline fakes)</small>",
         "cci_core<small>models · db · connectors · privacy · safety · cost · billing · gdpr</small>"]),
     band("Workers · RQ", "worker", [
         "ingest lane<small>backfill · media · transcribe/OCR/enrich/index</small>",
@@ -237,7 +237,7 @@ cat_audience = cat("§03 Audience & demand intelligence", [
     ("Competitor demand radar (opt-in)", "growth.competitor_radar", "GET /creators/{id}/competitor-radar"),
     ("Opportunity Score (explainable)", "demand.opportunity_score", "GET /demand/{id}/opportunity"),
     ("Demand Certificate", "demand.demand_certificate", "GET /demand/{id}/certificate"),
-    ("Pipeline + north-star", "demand.closed_loops", "GET /demand/pipeline · /north-star"),
+    ("Pipeline + north-star", "demand.closed_loops", "GET /creators/{id}/demand/pipeline · .../north-star"),
 ])
 cat_content = cat("§04 Content production", [
     ("Content briefs", "drafting.generate_brief", "(via draft)"),
@@ -248,23 +248,23 @@ cat_content = cat("§04 Content production", [
     ("Series builder", "repurposing.build_series", "POST /demand/{id}/series"),
     ("Performance prediction", "scale.predict_performance", "GET /drafts/{id}/predict"),
     ("Content calendar / planner", "scale.content_calendar", "GET /creators/{id}/calendar"),
-    ("Thumbnail & visual intelligence", "scale.thumbnail_concepts", "(via scale)"),
-    ("Canonical answers (cross-platform)", "canonical.group_variants", "POST/GET /creators/{id}/canonical"),
+    ("Thumbnail & visual intelligence", "scale.thumbnail_concepts", "(library only — no endpoint yet)"),
+    ("Canonical answers (cross-platform)", "canonical.group_variants", "POST .../canonical/group · GET .../canonical"),
     ("Versioned claim layer", "claims.extract_claims / detect_contradictions", "GET /claims · /claims/{id}/approve"),
 ])
 cat_engage = cat("§05 Engagement & inbox", [
     ("Intent-labelled queue", "inbox.labelled_inbox", "GET /creators/{id}/inbox"),
-    ("Bounded clarifying question", "inbox.bounded_clarify", "(retrieval-side)"),
-    ("No-answer waitlist", "inbox.add_to_waitlist", "(fan-side)"),
+    ("Bounded clarifying question", "inbox.bounded_clarify", "search response (no-answer) + fan chips"),
+    ("No-answer waitlist", "inbox.add_to_waitlist", "POST /api/{handle}/waitlist + fan email form"),
     ("Saved playbooks", "inbox.match_playbook", "POST/GET /creators/{id}/playbooks"),
-    ("Reply assistant", "engagement.draft_reply", "(DM job draft)"),
+    ("Reply assistant", "engagement.draft_reply", "(agentic-DM path — thread dispatcher ◑)"),
     ("Agentic DM (approval mode)", "engagement.handle_dm_followup / bulk_approve", "POST /creators/{id}/dm/bulk-approve"),
-    ("Community delegation", "engagement.delegation_candidate", "(DM dispatch)"),
+    ("Community delegation", "engagement.delegation_candidate", "hint in admin dm-queue"),
     ("‘Not now, but…’ queue", "engagement.defer_question / due_deferrals", "POST /defer · GET /deferrals/due"),
     ("Loop-Closer", "engagement.close_loop", "POST /demand/{id}/close-loop"),
 ])
 cat_money = cat("§06 Monetization & revenue", [
-    ("Auto-affiliate injection", "monetization.inject_affiliate / with_utm", "(caption-time)"),
+    ("Auto-affiliate injection", "monetization.inject_affiliate / with_utm", "applied at POST /drafts/{id}/decide"),
     ("Offer-aware CTAs", "monetization.offer_cta", "(answers/recs)"),
     ("Affiliate optimisation", "revenue.affiliate_optimisation", "GET /creators/{id}/affiliate-optimisation"),
     ("Sponsor matchmaker & pitch", "revenue.sponsor_report", "GET /creators/{id}/sponsor-report"),

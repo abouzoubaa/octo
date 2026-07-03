@@ -249,9 +249,16 @@ def dm_queue(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
                             DmJob.status == DmStatus.pending_approval)
         .order_by(DmJob.created_at)
     ).all()
+    from cci_agent.engagement import delegation_candidate
+
     out = []
     for job in jobs:
         comment = db.get(Comment, job.comment_id)
+        # community delegation: if a follower already answered this well, tell the
+        # operator so they can skip the DM (save the single-reply quota) and validate
+        # the follower's comment instead. Surfaced as a hint — the official IG API has
+        # no comment-like endpoint, so the validation itself stays a human action.
+        delegate = delegation_candidate(db, creator_id, comment) if comment else None
         out.append({
             "job_id": job.id,
             "comment": comment.text if comment else None,
@@ -260,6 +267,8 @@ def dm_queue(creator_id: str, db: Session = Depends(get_db)) -> list[dict]:
             "deep_link": job.deep_link,
             "confidence": job.confidence,
             "created_at": job.created_at.isoformat(),
+            "delegation": ({"comment_id": delegate.id, "text": delegate.text[:200]}
+                           if delegate is not None else None),
         })
     return out
 

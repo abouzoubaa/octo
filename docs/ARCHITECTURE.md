@@ -25,8 +25,8 @@ are swappable by configuration.
   - `cci_retrieval` — chunking, hybrid search, grounded answer card, intent.
   - `cci_agent` — demand intelligence, drafting, repurposing, engagement, inbox,
     intelligence, causal, claims, brand, revenue, scale, team, crm, canonical.
-  - `cci_providers` — LLM, embeddings, transcription, OCR, rerank, billing (interfaces +
-    offline fakes).
+  - `cci_providers` — LLM, embeddings, transcription, OCR, rerank (interfaces + offline
+    fakes). Billing (Stripe interface + fake) lives in `cci_core.billing`.
   - `cci_core` — models, DB, config, privacy/PII, safety (injection), cost, billing,
     GDPR, the **connector framework**, deep links, storage.
 - **Workers (RQ, three lanes)** — `ingest` (backfills, media, transcribe/OCR/enrich/
@@ -137,7 +137,7 @@ router** (`/agent/...`). Grouped by the agent-layer domains.
 | Competitor demand radar *(opt-in)* | `growth.competitor_radar` | `GET /creators/{id}/competitor-radar` |
 | Opportunity Score (explainable) | `demand.opportunity_score/score_topic` | `GET /demand/{id}/opportunity` |
 | Demand Certificate | `demand.demand_certificate` | `GET /demand/{id}/certificate` |
-| Demand pipeline + north-star | `demand.closed_loops` | `GET /demand/pipeline`, `/north-star` |
+| Demand pipeline + north-star | `demand.closed_loops` | `GET /creators/{id}/demand/pipeline` · `/creators/{id}/north-star` |
 
 ### §04 Content production
 | Feature | Module · function | Endpoint |
@@ -150,27 +150,27 @@ router** (`/agent/...`). Grouped by the agent-layer domains.
 | Series builder | `repurposing.build_series` | `POST /demand/{id}/series` |
 | Performance prediction | `scale.predict_performance` | `GET /drafts/{id}/predict` |
 | Content calendar / planner | `scale.content_calendar` | `GET /creators/{id}/calendar` |
-| Thumbnail & visual intelligence | `scale.thumbnail_concepts` | (via scale) |
-| Canonical answers (cross-platform) | `canonical.group_variants` | `POST/GET /creators/{id}/canonical` |
+| Thumbnail & visual intelligence | `scale.thumbnail_concepts` | (library only — no endpoint yet) |
+| Canonical answers (cross-platform) | `canonical.group_variants` | `POST /creators/{id}/canonical/group` · `GET /creators/{id}/canonical` |
 | Versioned claim layer | `claims.extract_claims/supersede/detect_contradictions` | `GET /claims`, `/claims/{id}/approve`, `/detect-contradictions` |
 
 ### §05 Engagement & inbox
 | Feature | Module · function | Endpoint |
 |---|---|---|
 | Intent-labelled queue | `inbox.labelled_inbox/label_message` | `GET /creators/{id}/inbox` |
-| Bounded clarifying question | `inbox.bounded_clarify` | (retrieval-side) |
-| No-answer waitlist | `inbox.add_to_waitlist` | (fan-side waitlist) |
-| Saved playbooks | `inbox.match_playbook` | `POST/GET /creators/{id}/playbooks` |
-| Reply assistant | `engagement.draft_reply` | (DM job draft) |
+| Bounded clarifying question | `inbox.bounded_clarify` | in the public search response (no-strong-answer) + fan-page chips |
+| No-answer waitlist | `inbox.add_to_waitlist` | `POST /api/{handle}/waitlist` + fan-page email form |
+| Saved playbooks | `inbox.match_playbook` | `POST/GET /creators/{id}/playbooks` · applied in the comment→DM pipeline |
+| Reply assistant | `engagement.draft_reply` | (agentic-DM path — thread dispatcher ◑) |
 | Agentic DM (approval mode) | `engagement.handle_dm_followup/can_auto_approve/bulk_approve` | `POST /creators/{id}/dm/bulk-approve` |
-| Community delegation | `engagement.delegation_candidate` | (DM dispatch) |
+| Community delegation | `engagement.delegation_candidate` | hint in `GET /admin/creators/{id}/dm-queue` |
 | "Not now, but…" queue | `engagement.defer_question/due_deferrals` | `POST /defer`, `GET /deferrals/due` |
 | Loop-Closer | `engagement.close_loop` | `POST /demand/{id}/close-loop` |
 
 ### §06 Monetization & revenue
 | Feature | Module · function | Endpoint |
 |---|---|---|
-| Auto-affiliate injection | `monetization.inject_affiliate/with_utm` | (caption-time) |
+| Auto-affiliate injection | `monetization.inject_affiliate/with_utm` | applied at draft approval (`POST /drafts/{id}/decide`) |
 | Offer-aware CTAs | `monetization.offer_cta` | (answers/recs) |
 | Affiliate optimisation | `revenue.affiliate_optimisation` | `GET /creators/{id}/affiliate-optimisation` |
 | Sponsor matchmaker & pitch | `revenue.sponsor_report` | `GET /creators/{id}/sponsor-report` |
@@ -198,6 +198,18 @@ router** (`/agent/...`). Grouped by the agent-layer domains.
 | Customer CRM | `crm.customer_profiles/lifecycle_segments` | `GET /creators/{id}/customers`, `/lifecycle` |
 | Team & role-based access | `team.add_member/has_capability/audit` | `POST/GET /creators/{id}/team` |
 | Public API & dev ecosystem | `team.mint_api_key/verify_api_key` + `public_api` | `POST /api-keys`, `GET /v1/public/*` |
+
+### Fan-side surfaces (public router — no login wall)
+| Feature | Endpoint |
+|---|---|
+| Search + grounded answer (+ clarify) | `GET /api/{handle}/search` |
+| Deep-link answer resolution | `GET /api/{handle}/answer/{answer_id}` |
+| Start-here paths / popular / topics | `GET /api/{handle}/start-here` · `/popular` · `/topics` |
+| No-answer waitlist + open cohorts | `POST /api/{handle}/waitlist` · `GET /api/{handle}/cohorts` |
+| Outcome feedback ("did this help?") | `POST /api/{handle}/feedback` |
+| Click signal + affiliate redirect | `POST /api/{handle}/events/click` · `GET /buy/{product_id}` |
+| Save-for-later (client-side) | fan page ☆ Save (localStorage) |
+| Cross-platform archive import | `POST /agent/creators/{id}/import` |
 
 ### Causal layer (cross-cutting measurement)
 | Feature | Module · function | Endpoint |

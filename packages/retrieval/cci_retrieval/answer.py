@@ -40,7 +40,8 @@ class AnswerCard:
     freshness: list[dict] = field(default_factory=list)  # superseded-source notes (set by serving layer)
 
 
-def generate_answer(session: Session, creator_id: str, question: str) -> AnswerCard:
+def generate_answer(session: Session, creator_id: str, question: str,
+                    *, op: str = "answer") -> AnswerCard:
     s = get_settings()
     results = search(session, creator_id, question)
     confidence = retrieval_confidence(results)
@@ -66,7 +67,9 @@ def generate_answer(session: Session, creator_id: str, question: str) -> AnswerC
     raw = get_llm().complete(SYSTEM_PROMPT, user_msg, json_output=True, max_tokens=500)
     from cci_core.cost import meter_llm
 
-    meter_llm(session, creator_id, user_msg, raw, op="answer")
+    # op distinguishes the surface (anonymous page / DM / dev API / eval) so the
+    # anonymous-answer abuse ceiling measures only what its name claims.
+    meter_llm(session, creator_id, user_msg, raw, op=op)
     text, cited_ns = _parse_llm_answer(raw)
 
     if text is None:

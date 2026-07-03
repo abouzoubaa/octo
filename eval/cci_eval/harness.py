@@ -52,7 +52,7 @@ def run_eval(creator_id: str) -> dict:
             expected = set(q.expected_post_ids or [])
             if not expected:
                 # labelled "no good answer in the corpus"
-                card = generate_answer(session, creator_id, q.question)
+                card = generate_answer(session, creator_id, q.question, op="eval_answer")
                 results["no_answer"]["total"] += 1
                 if card.state == AnswerState.no_strong_answer.value:
                     results["no_answer"]["correct"] += 1
@@ -69,7 +69,7 @@ def run_eval(creator_id: str) -> dict:
 
             if q.holdout:  # citation gate runs on the held-out subset
                 results["citations"]["holdout"] += 1
-                card = generate_answer(session, creator_id, q.question)
+                card = generate_answer(session, creator_id, q.question, op="eval_answer")
                 if card.state == AnswerState.answered.value:
                     results["citations"]["total"] += 1
                     cited = {c["post_id"] for c in card.citations}

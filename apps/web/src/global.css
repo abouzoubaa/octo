@@ -443,3 +443,13 @@ body {
   background: linear-gradient(135deg, var(--accent-2), var(--accent));
   border-radius: 8px; padding: 2px 9px; min-width: 28px; text-align: center;
 }
+
+/* No-answer waitlist (email-capture bridge) + clarify chips on the fan page */
+.clarify { margin-top: 10px; }
+.waitlist { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+.waitlist-row { display: flex; gap: 7px; margin-top: 7px; }
+.waitlist-input {
+  flex: 1; min-width: 0; border: 1px solid var(--hairline); border-radius: 999px;
+  padding: 7px 14px; font-size: 13px; background: var(--accent-soft); color: inherit;
+}
+.waitlist-input:focus { outline: 2px solid var(--accent); }

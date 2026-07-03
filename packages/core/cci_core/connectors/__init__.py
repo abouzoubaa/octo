@@ -35,14 +35,17 @@ def register(connector_cls: type[Connector]) -> type[Connector]:
 def get_connector(platform: str, *, full_loop: bool = False) -> Connector | None:
     """Resolve a connector. `full_loop` is a per-account grant (e.g. a TikTok account
     approved for comments + messaging); it's forwarded to connectors that support
-    capability tiers and ignored by the rest."""
+    capability tiers and ignored by the rest. Signature inspection (not try/except
+    TypeError) so a genuine constructor bug can't be misread as 'no full_loop param'
+    and silently downgrade a granted account to archive capabilities."""
+    import inspect
+
     cls = _REGISTRY.get(platform)
     if cls is None:
         return None
-    try:
+    if "full_loop" in inspect.signature(cls.__init__).parameters:
         return cls(full_loop=full_loop)  # tiered connectors (TikTok) accept the grant
-    except TypeError:
-        return cls()  # the rest have a uniform capability set
+    return cls()  # the rest have a uniform capability set
 
 
 def supported_platforms() -> list[str]:

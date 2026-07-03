@@ -49,6 +49,14 @@ def sync_native(creator_id: str, platform: str, *,
             connector = get_connector(platform, full_loop=bool(pa.full_loop))
         if connector is None or not supports(connector, CONTENT_READ):
             raise ValueError(f"platform '{platform}' has no native content connector")
+        # persist the grant + capabilities from the connector actually doing the sync,
+        # so stored state can never contradict behavior (an explicitly-passed full-loop
+        # connector must not leave the account recorded as archive, or vice versa).
+        grant = getattr(connector, "full_loop", None)
+        if grant is not None and bool(pa.full_loop) != bool(grant):
+            pa.full_loop = bool(grant)
+        pa.capabilities = sorted(connector.capabilities())
+        session.flush()
         read_comments = supports(connector, COMMENTS_READ)
 
         for item in connector.backfill_content(account):

@@ -51,6 +51,8 @@ export interface AnswerCard {
   citations: Citation[];
   confidence: number;
   answer_id: string | null;
+  // one either/or clarifying question when there's no strong answer (not open chat)
+  clarify?: { question: string; options: string[] } | null;
 }
 
 export interface SearchResponse {

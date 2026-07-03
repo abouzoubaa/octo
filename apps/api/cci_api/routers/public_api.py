@@ -68,7 +68,7 @@ def canonical_answer(q: str = Query(..., min_length=1, max_length=500),
     if creator is None:
         raise HTTPException(status_code=404, detail="creator not found")
 
-    card = generate_answer(db, creator.id, q)
+    card = generate_answer(db, creator.id, q, op="api_answer")
     if card.state != "answered":
         return {"state": "no_answer", "canonical_url": search_link(creator.handle, q),
                 "note": "no strong answer in the creator's archive"}

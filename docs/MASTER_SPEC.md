@@ -503,6 +503,7 @@ Legend: **✅ built** · **◑ partial / basic** · **⛔ not built (deferred)**
 | 02 | Offer-awareness | v1.5 | ✅ | `Offer`, offer-aware CTAs |
 | 02 | Rules & preferences | v1.5 | ✅ | `CreatorRules` |
 | 02 | Demand-item state machine | v1 | ✅ | `DemandState` + transitions |
+| 02 | Permission ladder | — | ✅ | `permissions.py` — per-action levels, `GET/PUT /permissions`, pause switch |
 | 02 | Intent / outcome event log | v1 | ✅ | `Outcome`, `Event` |
 | 03 | The Briefing | v1.5 | ✅ | `briefing.py` |
 | 03 | Content gap map | v1.5 | ✅ | `content_gap_map` + coverage/reconciliation |
@@ -510,7 +511,7 @@ Legend: **✅ built** · **◑ partial / basic** · **⛔ not built (deferred)**
 | 03 | Sentiment & emotion | v2 | ✅ | `score_sentiment` |
 | 03 | Trend detection | v2 | ✅ | `intelligence.py` (weekly; threshold-gated spikes) |
 | 03 | Cross-platform demand synthesis | v2 | ✅ | demand sources + `ExternalSignal` → radar |
-| 03 | Competitor demand radar | v3 | ⛔ | deferred (opt-in, multi-creator) |
+| 03 | Competitor demand radar | v3 | ◑ | `growth.competitor_radar` — opt-in gate + endpoint live; aggregates are placeholders pending a multi-creator panel |
 | 04 | Content briefs | v1.5 | ✅ | `generate_brief` |
 | 04 | Draft generator (script + hooks) | v1.5 | ✅ | `generate_draft` (cost-metered) |
 | 04 | Creator recall search | v1.5 | ✅ | `creator_recall` |
@@ -520,15 +521,15 @@ Legend: **✅ built** · **◑ partial / basic** · **⛔ not built (deferred)**
 | 04 | Content calendar / planner | v3 | ◑ | `content_calendar` (basic) |
 | 04 | Thumbnail & visual intelligence | v3 | ◑ | `thumbnail_concepts` (concepts; no CTR model) |
 | 05 | Intent-labelled queue | v1.5 | ✅ | `label_message`, `/inbox` |
-| 05 | Bounded clarifying question | v1.5 | ✅ | `bounded_clarify` |
-| 05 | No-answer waitlist | v1.5 | ✅ | `WaitlistEntry` |
-| 05 | Saved playbooks | v1.5 | ✅ | `Playbook` |
-| 05 | Reply assistant | v2 | ✅ | `draft_reply` |
+| 05 | Bounded clarifying question | v1.5 | ✅ | `bounded_clarify` — in the public search response on no-strong-answer; fan page renders the either/or chips |
+| 05 | No-answer waitlist | v1.5 | ✅ | `WaitlistEntry` + fan-page email form on no-strong-answer (shows cohort size) |
+| 05 | Saved playbooks | v1.5 | ✅ | `Playbook` CRUD + `match_playbook` applied in the comment→DM pipeline (matched template, still approval mode) |
+| 05 | Reply assistant | v2 | ◑ | `engagement.draft_reply` — drives the agentic-DM path (itself ◑); comment-DM uses the grounded answer card directly |
 | 05 | Agentic DM (approval mode) | v2 | ◑ | `handle_dm_followup`, `can_auto_approve`, `bulk_approve` (thread dispatcher not wired) |
-| 05 | Community delegation | v2 | ✅ | `delegation_candidate` |
+| 05 | Community delegation | v2 | ✅ | `delegation_candidate` — surfaced as a hint in the DM approval queue (the like itself is manual: no official comment-like API) |
 | 05 | "Not now, but…" queue | v2 | ✅ | `defer_question`, `DeferredItem`, `due_deferrals` |
 | 05 | Loop-Closer | v2 | ✅ | `close_loop` + re-promote/outcomes |
-| 06 | Auto-affiliate injection | v1.5 | ✅ | product mapping + UTM |
+| 06 | Auto-affiliate injection | v1.5 | ✅ | `inject_affiliate` applied at draft approval (caption-time proxy — auto-posting is deliberately avoided) |
 | 06 | Offer-aware CTAs | v1.5 | ✅ | offers → CTAs |
 | 06 | Affiliate optimisation | v2 | ✅ | `affiliate_optimisation` |
 | 06 | Sponsor matchmaker & pitch | v2 | ✅ | `sponsor_report` |
@@ -537,11 +538,11 @@ Legend: **✅ built** · **◑ partial / basic** · **⛔ not built (deferred)**
 | 06 | Brand partnership portal | v3·scale | ⛔ | deferred (scale-gated) |
 | 07 | Crisis / sentiment-shift detection | v2 | ◑ | `brand.py` (sentiment-shift; no external-web watch) |
 | 07 | Voice consistency scoring | v2 | ✅ | `brand.py` |
-| 07 | Plagiarism / unauthorised-use monitoring | v3 | ⛔ | deferred |
+| 07 | Plagiarism / unauthorised-use monitoring | v3 | ◑ | `growth.plagiarism_scan` — real pgvector-similarity repost detector via endpoint; no external-web watch |
 | 08 | Content strategy advisor | v2 | ✅ | `strategy_advisor` |
-| 08 | Peer benchmarking | v3 | ⛔ | deferred (multi-creator) |
+| 08 | Peer benchmarking | v3 | ◑ | `growth.peer_benchmark` — opt-in gate + endpoint live; peer norms are placeholders pending a real panel |
 | 08 | Education & skill planning | v3 | ◑ | `education_plan` (basic) |
-| 09 | Task / project integration | v3 | ⛔ | deferred (Notion/Asana/Linear) |
+| 09 | Task / project integration | v3 | ◑ | `growth.export_task` endpoint (task payload export); no external PM sync |
 | 09 | Customer CRM | v3 | ◑ | `/customers` endpoint (basic profiles) |
 | 09 | Team & role-based access | v3 | ✅ | `TeamMember` + roles + `ApiKey` + audit log |
 | 09 | Creator marketplace | v3·scale | ⛔ | deferred (scale-gated) |
@@ -569,9 +570,10 @@ five-dimension review.
 
 Every **v1** and **v1.5** feature is **built**; the **v2** agent layer is **built**;
 **v3** is **mostly built** (basic implementations of prediction, calendar, thumbnails,
-pricing, forecasting, education, CRM; team/roles and public API fully built). The only
-**deferred** items are the genuinely scale- or multi-creator-gated ones (competitor
-radar, brand portal, marketplace, peer benchmarking, plagiarism monitoring, PM
-integration), and the **deliberately-avoided** items remain correctly unbuilt. Beyond
+pricing, forecasting, education, CRM; team/roles and public API fully built). The scale-gated
+items (competitor radar, peer benchmarking, plagiarism scan, task export) exist as
+**opt-in-gated scaffolds with live endpoints** (placeholder aggregates pending a
+multi-creator panel); only the **brand portal and creator marketplace** remain fully
+deferred, and the **deliberately-avoided** items remain correctly unbuilt. Beyond
 the specs, the build added a full cross-platform connector framework, demand-integrity
 and explainability layers, and a production security/billing/observability posture.
