@@ -1,0 +1,51 @@
+# RQ workers drain all three queues; the scheduler enqueues periodic jobs.
+# GPU note: transcription/OCR (faster-whisper/PaddleOCR) are CPU-heavy — give the
+# worker pool generous CPU, or split a GPU node pool and schedule ingest there.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sift-worker
+  namespace: sift
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: sift-worker }
+  template:
+    metadata:
+      labels: { app: sift-worker }
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/yourorg/sift-worker:latest
+          command: ["cci-worker"]
+          envFrom:
+            - configMapRef: { name: sift-config }
+            - secretRef: { name: sift-secrets }
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits: { cpu: "2", memory: "4Gi" }
+---
+# Single scheduler replica (it only enqueues; jobs run on the worker pool).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sift-scheduler
+  namespace: sift
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: sift-scheduler }
+  template:
+    metadata:
+      labels: { app: sift-scheduler }
+    spec:
+      containers:
+        - name: scheduler
+          image: ghcr.io/yourorg/sift-worker:latest
+          command: ["python", "-c", "from cci_workers.scheduler import schedule_forever; schedule_forever()"]
+          envFrom:
+            - configMapRef: { name: sift-config }
+            - secretRef: { name: sift-secrets }
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits: { cpu: "250m", memory: "256Mi" }

@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+# ffmpeg for media handling (whisper input); ML extra is optional — enable
+# faster-whisper/paddleocr by building with: --build-arg INSTALL_ML=1
+ARG INSTALL_ML=0
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY pyproject.toml ./
+COPY packages ./packages
+COPY apps/api ./apps/api
+COPY apps/workers ./apps/workers
+COPY eval ./eval
+RUN pip install --no-cache-dir . \
+    && if [ "$INSTALL_ML" = "1" ]; then pip install --no-cache-dir ".[ml]"; fi
+
+CMD ["cci-worker"]

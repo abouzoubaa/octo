@@ -1,0 +1,30 @@
+# Labelled eval set example (plan §5: 40–60 real audience questions, mined from
+# the comment backlog and repeated DMs; ~2–3 h of creator labelling).
+#
+# expected_post_ids accepts internal post ids OR platform external ids.
+# holdout: true ⇒ used for the citation-correctness gate (never for tuning).
+# expected_post_ids: [] ⇒ the correct behaviour is the "no strong answer" state.
+
+- question: "where's the reel about handling price objections?"
+  expected_post_ids: ["demo-1"]
+  holdout: false
+  labelled_by: creator
+
+- question: "what can I eat before work that isn't eggs?"
+  expected_post_ids: ["demo-0"]
+  holdout: true
+  labelled_by: creator
+
+- question: "how do I structure a push day workout?"
+  expected_post_ids: ["demo-2"]
+  holdout: true
+  labelled_by: creator
+
+- question: "why am I not losing weight in a deficit?"
+  expected_post_ids: ["demo-4"]
+  holdout: false
+  labelled_by: creator
+
+- question: "what's your favorite crypto exchange?"
+  expected_post_ids: []   # out of corpus → must return no_strong_answer
+  labelled_by: creator

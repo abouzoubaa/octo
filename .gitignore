@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node / Qwik
+node_modules/
+apps/web/dist/
+apps/web/server/
+apps/web/tmp/
+.qwik/
+
+# Env & local state
+.env
+.env.local
+*.local.yml
+
+# Media / data
+data/
+media/
+*.sqlite3
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

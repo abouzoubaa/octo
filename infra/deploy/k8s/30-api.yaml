@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sift-api
+  namespace: sift
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: sift-api }
+  template:
+    metadata:
+      labels: { app: sift-api }
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/yourorg/sift-api:latest
+          command: ["cci-api"]
+          ports: [{ containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: sift-config }
+            - secretRef: { name: sift-secrets }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1", memory: "1Gi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sift-api
+  namespace: sift
+spec:
+  selector: { app: sift-api }
+  ports: [{ port: 80, targetPort: 8000 }]

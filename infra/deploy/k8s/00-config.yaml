@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sift
+---
+# Non-secret configuration. Point DATABASE/REDIS/S3 at your managed services.
+# Secrets (tokens, keys) live in 10-secret.yaml — never put them here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sift-config
+  namespace: sift
+data:
+  CCI_DATABASE_URL: "postgresql+psycopg://cci:cci@sift-postgres:5432/cci"
+  CCI_REDIS_URL: "redis://sift-redis:6379/0"
+  CCI_S3_ENDPOINT: "https://s3.example.com"
+  CCI_S3_BUCKET: "sift-media"
+  CCI_PUBLIC_BASE_URL: "https://yourapp.example"
+  CCI_DEBUG: "false"
+  CCI_LOG_JSON: "true"
+  # AI providers — flip from the offline fakes to real services in production
+  CCI_LLM_PROVIDER: "anthropic"
+  CCI_LLM_MODEL: "claude-sonnet-4-6"
+  CCI_EMBEDDING_PROVIDER: "openai-compatible"
+  CCI_EMBEDDING_MODEL: "text-embedding-3-small"
+  CCI_EMBEDDING_DIMS: "1536"
+  CCI_TRANSCRIPTION_PROVIDER: "faster-whisper"
+  CCI_OCR_PROVIDER: "paddleocr"
+  CCI_RERANK_PROVIDER: "cross-encoder"
+  CCI_BILLING_PROVIDER: "stripe"
+  CCI_PUBLIC_RATE_LIMIT_PER_MIN: "60"

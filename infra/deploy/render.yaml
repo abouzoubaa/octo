@@ -1,0 +1,80 @@
+# Render Blueprint — one-file managed deploy (managed Postgres + Redis + services).
+# Set secret env vars (marked sync:false) in the Render dashboard after first apply.
+# Postgres needs the pgvector extension: run `CREATE EXTENSION vector;` once, then
+# the predeploy alembic step builds the schema.
+databases:
+  - name: sift-postgres
+    plan: standard
+    postgresMajorVersion: "16"
+
+services:
+  - type: redis
+    name: sift-redis
+    plan: starter
+    ipAllowList: []
+
+  - type: web
+    name: sift-api
+    runtime: docker
+    dockerfilePath: infra/Dockerfile.api
+    dockerContext: .
+    plan: standard
+    healthCheckPath: /healthz
+    preDeployCommand: alembic -c infra/alembic.ini upgrade head
+    envVars:
+      - { key: CCI_DATABASE_URL, fromDatabase: { name: sift-postgres, property: connectionString } }
+      - { key: CCI_REDIS_URL, fromService: { name: sift-redis, type: redis, property: connectionString } }
+      - { key: CCI_DEBUG, value: "false" }
+      - { key: CCI_LOG_JSON, value: "true" }
+      - { key: CCI_PUBLIC_BASE_URL, sync: false }
+      - { key: CCI_ADMIN_TOKEN, generateValue: true }
+      - { key: CCI_ENCRYPTION_KEY, sync: false }     # Fernet key (generate, then paste)
+      - { key: CCI_OAUTH_STATE_SECRET, generateValue: true }
+      - { key: CCI_IG_APP_ID, sync: false }
+      - { key: CCI_IG_APP_SECRET, sync: false }
+      - { key: CCI_IG_WEBHOOK_VERIFY_TOKEN, generateValue: true }
+      - { key: CCI_LLM_PROVIDER, value: anthropic }
+      - { key: CCI_LLM_API_KEY, sync: false }
+      - { key: CCI_EMBEDDING_PROVIDER, value: openai-compatible }
+      - { key: CCI_EMBEDDING_API_KEY, sync: false }
+      - { key: CCI_RERANK_PROVIDER, value: cross-encoder }
+      - { key: CCI_BILLING_PROVIDER, value: stripe }
+      - { key: CCI_STRIPE_API_KEY, sync: false }
+      - { key: CCI_STRIPE_WEBHOOK_SECRET, sync: false }
+      - { key: CCI_S3_ENDPOINT, sync: false }
+      - { key: CCI_S3_BUCKET, sync: false }
+      - { key: CCI_S3_ACCESS_KEY, sync: false }
+      - { key: CCI_S3_SECRET_KEY, sync: false }
+
+  - type: worker
+    name: sift-worker
+    runtime: docker
+    dockerfilePath: infra/Dockerfile.worker
+    dockerContext: .
+    plan: standard
+    dockerCommand: cci-worker
+    envVars:
+      - { key: CCI_DATABASE_URL, fromDatabase: { name: sift-postgres, property: connectionString } }
+      - { key: CCI_REDIS_URL, fromService: { name: sift-redis, type: redis, property: connectionString } }
+      - { fromGroup: sift-shared }   # share the API's AI/platform secrets via an env group
+
+  - type: worker
+    name: sift-scheduler
+    runtime: docker
+    dockerfilePath: infra/Dockerfile.worker
+    dockerContext: .
+    plan: starter
+    dockerCommand: python -c "from cci_workers.scheduler import schedule_forever; schedule_forever()"
+    envVars:
+      - { key: CCI_DATABASE_URL, fromDatabase: { name: sift-postgres, property: connectionString } }
+      - { key: CCI_REDIS_URL, fromService: { name: sift-redis, type: redis, property: connectionString } }
+
+  - type: web
+    name: sift-web
+    runtime: docker
+    dockerfilePath: infra/Dockerfile.web
+    dockerContext: apps/web
+    plan: starter
+    envVars:
+      - { key: PUBLIC_API_BASE, fromService: { name: sift-api, type: web, property: host } }
+      - { key: ADMIN_API_TOKEN, fromService: { name: sift-api, type: web, envVarKey: CCI_ADMIN_TOKEN } }

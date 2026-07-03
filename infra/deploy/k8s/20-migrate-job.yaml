@@ -1,0 +1,20 @@
+# Run schema migrations to head BEFORE rolling out api/worker. Idempotent —
+# re-running on an up-to-date DB is a no-op. Apply with:
+#   kubectl apply -f 20-migrate-job.yaml && kubectl -n sift wait --for=condition=complete job/sift-migrate
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sift-migrate
+  namespace: sift
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: ghcr.io/yourorg/sift-worker:latest
+          command: ["alembic", "-c", "infra/alembic.ini", "upgrade", "head"]
+          envFrom:
+            - configMapRef: { name: sift-config }
+            - secretRef: { name: sift-secrets }
